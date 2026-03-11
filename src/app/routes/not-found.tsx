@@ -13,17 +13,11 @@ export default function NotFoundErrorPage() {
         <ErrorView>
             <ErrorHeader>Page not found</ErrorHeader>
             <ErrorDescription>
-                Sorry, we couldn’t find the page you’re looking for.
+                The requested page is not available.
             </ErrorDescription>
             <ErrorActions>
                 <Button size="lg" onClick={() => navigate(-1)}>
                     Go back
-                </Button>
-                <Button size="lg" variant="ghost">
-                    Contact support{' '}
-                    <span aria-hidden="true" className="ml-1">
-                        &rarr;
-                    </span>
                 </Button>
             </ErrorActions>
         </ErrorView>

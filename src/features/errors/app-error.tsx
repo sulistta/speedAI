@@ -10,15 +10,13 @@ import {
 export default function AppErrorPage() {
     return (
         <ErrorView>
-            <ErrorHeader>We&apos;re fixing it</ErrorHeader>
+            <ErrorHeader>Unexpected error</ErrorHeader>
             <ErrorDescription>
-                The app encountered an error and needs to be restarted.
-                <br />
-                We know about it and we&apos;re working to fix it.
+                The app ran into an unexpected issue and needs to restart.
             </ErrorDescription>
             <ErrorActions>
                 <Button size="lg" onClick={relaunch}>
-                    Relaunch app
+                    Restart app
                 </Button>
             </ErrorActions>
         </ErrorView>

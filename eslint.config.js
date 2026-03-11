@@ -5,10 +5,21 @@ import pluginReact from 'eslint-plugin-react'
 import eslintConfigPrettier from 'eslint-config-prettier'
 
 export default [
+    {
+        ignores: ['dist/**', 'src-tauri/target/**']
+    },
     { files: ['**/*.{js,mjs,cjs,ts,jsx,tsx}'] },
     { languageOptions: { globals: globals.browser } },
     pluginJs.configs.recommended,
     ...tseslint.configs.recommended,
     pluginReact.configs.flat.recommended,
+    pluginReact.configs.flat['jsx-runtime'],
+    {
+        settings: {
+            react: {
+                version: 'detect'
+            }
+        }
+    },
     eslintConfigPrettier
 ]
