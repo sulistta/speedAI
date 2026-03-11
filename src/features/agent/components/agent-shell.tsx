@@ -1,19 +1,31 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { startTransition, useEffect, useState } from 'react'
-import { getGeminiModelLabel } from '@/features/agent/constants'
+import {
+    DEFAULT_GEMINI_MODEL_ID,
+    DEFAULT_LLM_PROVIDER,
+    DEFAULT_MODAL_MODEL_ID,
+    DEFAULT_MODAL_THINKING_ENABLED
+} from '@/features/agent/constants'
 import MainView from '@/features/agent/components/main-view'
 import SettingsView from '@/features/agent/components/settings-view'
 import WindowChrome from '@/features/agent/components/window-chrome'
 import { resetBrowserAgentSession } from '@/features/agent/services/desktop-actions'
-import { runDesktopAgentCommand } from '@/features/agent/services/gemini-service'
 import {
-    loadGeminiSettings,
-    saveGeminiSettings
+    getActiveModelLabel,
+    getActiveProviderLabel,
+    isProviderConfigured,
+    runAgentCommand
+} from '@/features/agent/services/llm-service'
+import {
+    loadLLMSettings,
+    saveLLMSettings
 } from '@/features/agent/services/settings-store'
 import type {
     AgentExecutionStatus,
+    AgentLLMSettings,
     AgentStatusEntry,
     AgentView,
+    LLMProvider,
     SettingsFeedback
 } from '@/features/agent/types'
 import {
@@ -27,23 +39,36 @@ const panelTransition = {
     ease: [0.22, 1, 0.36, 1] as const
 }
 
-function buildInitialStatus(
-    hasApiKey: boolean,
-    modelId: string
-): AgentStatusEntry {
-    const modelLabel = getGeminiModelLabel(modelId)
+const DEFAULT_SETTINGS: AgentLLMSettings = {
+    provider: DEFAULT_LLM_PROVIDER,
+    geminiApiKey: '',
+    geminiModelId: DEFAULT_GEMINI_MODEL_ID,
+    modalApiKey: '',
+    modalModelId: DEFAULT_MODAL_MODEL_ID,
+    modalThinkingEnabled: DEFAULT_MODAL_THINKING_ENABLED
+}
 
-    if (hasApiKey) {
+function getConfigurationLabel(settings: AgentLLMSettings) {
+    return isProviderConfigured(settings)
+        ? 'API Key configurada'
+        : 'API Key pendente'
+}
+
+function buildInitialStatus(settings: AgentLLMSettings): AgentStatusEntry {
+    const providerLabel = getActiveProviderLabel(settings)
+    const modelLabel = getActiveModelLabel(settings)
+
+    if (isProviderConfigured(settings)) {
         return createStatusEntry({
             tone: 'success',
             title: 'Agente pronto',
-            detail: `${modelLabel} carregado com uma chave salva no store.`
+            detail: `${providerLabel} ativo com ${modelLabel}.`
         })
     }
 
     return createStatusEntry({
         tone: 'info',
-        title: 'Gemini ainda nao configurado',
+        title: `${providerLabel} ainda nao configurado`,
         detail: `Abra Settings e salve sua API Key para habilitar a navegacao web assistida com ${modelLabel}.`
     })
 }
@@ -51,10 +76,9 @@ function buildInitialStatus(
 export default function AgentShell() {
     const [activeView, setActiveView] = useState<AgentView>('main')
     const [command, setCommand] = useState('')
-    const [apiKey, setApiKey] = useState('')
-    const [modelId, setModelId] = useState('')
-    const [settingsApiKeyDraft, setSettingsApiKeyDraft] = useState('')
-    const [settingsModelIdDraft, setSettingsModelIdDraft] = useState('')
+    const [settings, setSettings] = useState<AgentLLMSettings>(DEFAULT_SETTINGS)
+    const [settingsDraft, setSettingsDraft] =
+        useState<AgentLLMSettings>(DEFAULT_SETTINGS)
     const [statusEntries, setStatusEntries] = useState<AgentStatusEntry[]>([])
     const [settingsFeedback, setSettingsFeedback] =
         useState<SettingsFeedback | null>(null)
@@ -62,27 +86,25 @@ export default function AgentShell() {
     const [isSavingSettings, setIsSavingSettings] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
 
+    const activeProviderLabel = getActiveProviderLabel(settings)
+    const activeModelLabel = getActiveModelLabel(settings)
+    const isConfigured = isProviderConfigured(settings)
+    const configurationLabel = getConfigurationLabel(settings)
+
     useEffect(() => {
         let isMounted = true
 
         async function bootstrap() {
             try {
-                const settings = await loadGeminiSettings()
+                const loadedSettings = await loadLLMSettings()
 
                 if (!isMounted) {
                     return
                 }
 
-                setApiKey(settings.apiKey)
-                setModelId(settings.modelId)
-                setSettingsApiKeyDraft(settings.apiKey)
-                setSettingsModelIdDraft(settings.modelId)
-                setStatusEntries([
-                    buildInitialStatus(
-                        settings.apiKey.length > 0,
-                        settings.modelId
-                    )
-                ])
+                setSettings(loadedSettings)
+                setSettingsDraft(loadedSettings)
+                setStatusEntries([buildInitialStatus(loadedSettings)])
             } catch (error) {
                 if (!isMounted) {
                     return
@@ -134,13 +156,20 @@ export default function AgentShell() {
 
     function openSettings() {
         setSettingsFeedback(null)
-        setSettingsApiKeyDraft(apiKey)
-        setSettingsModelIdDraft(modelId)
+        setSettingsDraft(settings)
         startTransition(() => setActiveView('settings'))
     }
 
     function closeSettings() {
         startTransition(() => setActiveView('main'))
+    }
+
+    function handleProviderDraftChange(provider: LLMProvider) {
+        setSettingsDraft((current) => ({
+            ...current,
+            provider
+        }))
+        setSettingsFeedback(null)
     }
 
     async function handleSaveSettings() {
@@ -152,35 +181,21 @@ export default function AgentShell() {
         setSettingsFeedback(null)
 
         try {
-            const savedSettings = await saveGeminiSettings({
-                apiKey: settingsApiKeyDraft,
-                modelId: settingsModelIdDraft
-            })
-            const hasApiKey = savedSettings.apiKey.length > 0
-            const savedModelLabel = getGeminiModelLabel(savedSettings.modelId)
+            const savedSettings = await saveLLMSettings(settingsDraft)
+            const savedProviderLabel = getActiveProviderLabel(savedSettings)
+            const savedModelLabel = getActiveModelLabel(savedSettings)
+            const nextConfigured = isProviderConfigured(savedSettings)
 
-            setApiKey(savedSettings.apiKey)
-            setModelId(savedSettings.modelId)
-            setSettingsApiKeyDraft(savedSettings.apiKey)
-            setSettingsModelIdDraft(savedSettings.modelId)
+            setSettings(savedSettings)
+            setSettingsDraft(savedSettings)
             setSettingsFeedback({
                 tone: 'success',
-                message: hasApiKey
-                    ? `Configuracoes salvas com sucesso. Modelo: ${savedModelLabel}.`
-                    : `Modelo ${savedModelLabel} salvo. API Key removida do plugin-store.`
+                message: nextConfigured
+                    ? `Configuracoes salvas com sucesso. ${savedProviderLabel} ativo com ${savedModelLabel}.`
+                    : `${savedProviderLabel} salvo com ${savedModelLabel}. API Key pendente.`
             })
 
-            pushStatus(
-                createStatusEntry({
-                    tone: hasApiKey ? 'success' : 'info',
-                    title: hasApiKey
-                        ? 'Credenciais atualizadas'
-                        : 'Credenciais removidas',
-                    detail: hasApiKey
-                        ? `O agente ja pode executar navegacao web com ${savedModelLabel}.`
-                        : 'O agente ficou sem API Key configurada.'
-                })
-            )
+            pushStatus(buildInitialStatus(savedSettings))
         } catch (error) {
             setSettingsFeedback({
                 tone: 'error',
@@ -190,7 +205,7 @@ export default function AgentShell() {
             pushStatus(
                 createStatusEntry({
                     tone: 'error',
-                    title: 'Falha ao salvar a API Key',
+                    title: 'Falha ao salvar configuracoes',
                     detail: getErrorMessage(error)
                 })
             )
@@ -206,12 +221,12 @@ export default function AgentShell() {
             return
         }
 
-        if (apiKey.trim().length === 0) {
+        if (!isConfigured) {
             pushStatus(
                 createStatusEntry({
                     tone: 'info',
                     title: 'Configuracao obrigatoria',
-                    detail: 'Salve sua API Key do Gemini antes de executar comandos.',
+                    detail: `Salve sua API Key do ${activeProviderLabel} antes de executar comandos.`,
                     request: trimmedCommand
                 })
             )
@@ -220,22 +235,20 @@ export default function AgentShell() {
         }
 
         setIsSubmitting(true)
-        const currentModelLabel = getGeminiModelLabel(modelId)
 
         pushStatus(
             createStatusEntry({
                 tone: 'thinking',
                 title: 'Pensando...',
-                detail: `Planejando a navegacao com ${currentModelLabel}.`,
+                detail: `Planejando a navegacao com ${activeProviderLabel} (${activeModelLabel}).`,
                 request: trimmedCommand
             })
         )
 
         try {
-            const result = await runDesktopAgentCommand(
+            const result = await runAgentCommand(
                 trimmedCommand,
-                apiKey,
-                modelId,
+                settings,
                 pushRuntimeStatus
             )
 
@@ -286,25 +299,62 @@ export default function AgentShell() {
                             {activeView === 'main' ? (
                                 <MainView
                                     command={command}
-                                    hasApiKey={apiKey.trim().length > 0}
+                                    configurationLabel={configurationLabel}
                                     isBootstrapping={isBootstrapping}
+                                    isConfigured={isConfigured}
                                     isSubmitting={isSubmitting}
-                                    modelLabel={getGeminiModelLabel(modelId)}
+                                    modelLabel={activeModelLabel}
                                     onCommandChange={setCommand}
                                     onOpenSettings={openSettings}
                                     onSubmit={() => void handleSubmitCommand()}
+                                    providerLabel={activeProviderLabel}
                                     statusEntries={statusEntries}
                                 />
                             ) : (
                                 <SettingsView
-                                    apiKey={settingsApiKeyDraft}
                                     feedback={settingsFeedback}
+                                    geminiApiKey={settingsDraft.geminiApiKey}
+                                    geminiModelId={settingsDraft.geminiModelId}
                                     isSaving={isSavingSettings}
-                                    modelId={settingsModelIdDraft}
-                                    onApiKeyChange={setSettingsApiKeyDraft}
-                                    onModelIdChange={setSettingsModelIdDraft}
+                                    modalApiKey={settingsDraft.modalApiKey}
+                                    modalModelId={settingsDraft.modalModelId}
+                                    modalThinkingEnabled={
+                                        settingsDraft.modalThinkingEnabled
+                                    }
                                     onBack={closeSettings}
+                                    onGeminiApiKeyChange={(value) =>
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            geminiApiKey: value
+                                        }))
+                                    }
+                                    onGeminiModelIdChange={(value) =>
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            geminiModelId: value
+                                        }))
+                                    }
+                                    onModalApiKeyChange={(value) =>
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            modalApiKey: value
+                                        }))
+                                    }
+                                    onModalModelIdChange={(value) =>
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            modalModelId: value
+                                        }))
+                                    }
+                                    onModalThinkingEnabledChange={(value) =>
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            modalThinkingEnabled: value
+                                        }))
+                                    }
+                                    onProviderChange={handleProviderDraftChange}
                                     onSave={() => void handleSaveSettings()}
+                                    provider={settingsDraft.provider}
                                 />
                             )}
                         </motion.div>

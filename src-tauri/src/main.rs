@@ -1,21 +1,25 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     fs,
     io::{BufRead, BufReader, Write},
     path::PathBuf,
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager, State};
 
 const SIDECAR_READY_SIGNAL: &str = "READY";
 const SIDECAR_SCRIPT_RELATIVE_PATH: &str = "scripts/web-agent-sidecar.ts";
 const BROWSER_PROFILE_DIRECTORY: &str = "browser-profile";
+const MODAL_CHAT_COMPLETIONS_URL: &str =
+    "https://api.us-west-2.modal.direct/v1/chat/completions";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,9 +100,94 @@ struct BrowserAgentResponseEnvelope {
     error: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalToolFunction {
+    name: String,
+    arguments: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalToolCall {
+    id: String,
+    #[serde(rename = "type")]
+    call_type: String,
+    function: ModalToolFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalChatMessage {
+    role: String,
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_calls: Option<Vec<ModalToolCall>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalToolDefinitionFunction {
+    name: String,
+    description: String,
+    parameters: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalToolDefinition {
+    #[serde(rename = "type")]
+    tool_type: String,
+    function: ModalToolDefinitionFunction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalThinkingConfig {
+    #[serde(rename = "type")]
+    thinking_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModalChatCompletionRequest {
+    api_key: String,
+    model: String,
+    messages: Vec<ModalChatMessage>,
+    tools: Vec<ModalToolDefinition>,
+    tool_choice: String,
+    thinking_enabled: bool,
+    temperature: f64,
+    max_tokens: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ModalChatCompletionApiRequest {
+    model: String,
+    messages: Vec<ModalChatMessage>,
+    tools: Vec<ModalToolDefinition>,
+    tool_choice: String,
+    thinking: ModalThinkingConfig,
+    temperature: f64,
+    max_tokens: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalChatCompletionChoice {
+    finish_reason: Option<String>,
+    message: Option<ModalChatMessage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalChatCompletionError {
+    message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalChatCompletionResponse {
+    choices: Option<Vec<ModalChatCompletionChoice>>,
+    error: Option<ModalChatCompletionError>,
+}
+
+#[derive(Clone, Default)]
 struct BrowserAgentRuntime {
-    process: Mutex<Option<BrowserAgentSidecar>>,
+    process: Arc<Mutex<Option<BrowserAgentSidecar>>>,
 }
 
 struct BrowserAgentSidecar {
@@ -327,20 +416,119 @@ impl BrowserAgentRuntime {
     }
 }
 
+fn build_modal_client() -> Result<Client, String> {
+    Client::builder()
+        .timeout(Duration::from_secs(90))
+        .build()
+        .map_err(|error| format!("Falha ao criar o cliente HTTP do Modal: {error}"))
+}
+
+fn read_modal_error(response: Response) -> String {
+    let status = response.status();
+    let body = response
+        .text()
+        .unwrap_or_else(|_| "sem corpo de resposta".to_string());
+
+    if let Ok(parsed_body) = serde_json::from_str::<ModalChatCompletionResponse>(&body) {
+        if let Some(message) = parsed_body.error.and_then(|error| error.message) {
+            if !message.trim().is_empty() {
+                return message;
+            }
+        }
+    }
+
+    let trimmed_body = body.trim();
+
+    if trimmed_body.is_empty() {
+        format!("Modal respondeu com HTTP {status} sem detalhes adicionais.")
+    } else {
+        format!("Modal respondeu com HTTP {status}: {trimmed_body}")
+    }
+}
+
+async fn run_blocking_task<T, F>(operation: &'static str, task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| format!("Falha ao aguardar {operation}: {error}"))?
+}
+
 #[tauri::command]
-fn execute_browser_agent_action(
+async fn execute_browser_agent_action(
     app: AppHandle,
     runtime: State<'_, BrowserAgentRuntime>,
     request: BrowserAgentRequest,
 ) -> Result<BrowserAgentActionResult, String> {
-    runtime.execute(&app, request)
+    let runtime = runtime.inner().clone();
+
+    run_blocking_task("a execucao da acao web", move || {
+        runtime.execute(&app, request)
+    })
+    .await
 }
 
 #[tauri::command]
-fn reset_browser_agent_session(
+async fn reset_browser_agent_session(
     runtime: State<'_, BrowserAgentRuntime>,
 ) -> Result<(), String> {
-    runtime.reset()
+    let runtime = runtime.inner().clone();
+
+    run_blocking_task("o reset da sessao web", move || runtime.reset()).await
+}
+
+fn execute_modal_chat_completion_blocking(
+    request: ModalChatCompletionRequest,
+) -> Result<ModalChatCompletionResponse, String> {
+    if request.api_key.trim().is_empty() {
+        return Err("Salve sua API Key do Modal antes de executar comandos.".to_string());
+    }
+
+    if request.model.trim().is_empty() {
+        return Err("Selecione um modelo do Modal antes de executar comandos.".to_string());
+    }
+
+    let client = build_modal_client()?;
+    let response = client
+        .post(MODAL_CHAT_COMPLETIONS_URL)
+        .bearer_auth(request.api_key.trim())
+        .json(&ModalChatCompletionApiRequest {
+            model: request.model,
+            messages: request.messages,
+            tools: request.tools,
+            tool_choice: request.tool_choice,
+            thinking: ModalThinkingConfig {
+                thinking_type: if request.thinking_enabled {
+                    "enabled".to_string()
+                } else {
+                    "disabled".to_string()
+                },
+            },
+            temperature: request.temperature,
+            max_tokens: request.max_tokens,
+        })
+        .send()
+        .map_err(|error| format!("Falha ao conversar com o Modal: {error}"))?;
+
+    if !response.status().is_success() {
+        return Err(read_modal_error(response));
+    }
+
+    response
+        .json::<ModalChatCompletionResponse>()
+        .map_err(|error| format!("Falha ao interpretar a resposta do Modal: {error}"))
+}
+
+#[tauri::command]
+async fn execute_modal_chat_completion(
+    request: ModalChatCompletionRequest,
+) -> Result<ModalChatCompletionResponse, String> {
+    run_blocking_task("a resposta do Modal", move || {
+        execute_modal_chat_completion_blocking(request)
+    })
+    .await
 }
 
 fn main() {
@@ -350,7 +538,8 @@ fn main() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             execute_browser_agent_action,
-            reset_browser_agent_session
+            reset_browser_agent_session,
+            execute_modal_chat_completion
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

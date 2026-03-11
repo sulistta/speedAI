@@ -8,9 +8,61 @@ export type AgentStatusTone =
     | 'error'
     | 'info'
 
-export interface GeminiSettings {
+export type LLMProvider = 'gemini' | 'modal'
+
+export interface AgentLLMSettings {
+    provider: LLMProvider
+    geminiApiKey: string
+    geminiModelId: string
+    modalApiKey: string
+    modalModelId: string
+    modalThinkingEnabled: boolean
+}
+
+export interface ModalToolCall {
+    id: string
+    type: 'function'
+    function: {
+        name: string
+        arguments: string
+    }
+}
+
+export interface ModalChatMessage {
+    role: 'system' | 'user' | 'assistant' | 'tool'
+    content?: string | null
+    tool_calls?: ModalToolCall[]
+    tool_call_id?: string
+}
+
+export interface ModalToolDefinition {
+    type: 'function'
+    function: {
+        name: string
+        description: string
+        parameters: Record<string, unknown>
+    }
+}
+
+export interface ModalChatCompletionRequest {
     apiKey: string
-    modelId: string
+    model: string
+    messages: ModalChatMessage[]
+    tools: ModalToolDefinition[]
+    toolChoice: 'auto'
+    thinkingEnabled: boolean
+    temperature: number
+    maxTokens: number
+}
+
+export interface ModalChatCompletionResponse {
+    choices?: Array<{
+        finish_reason?: string | null
+        message?: ModalChatMessage
+    }>
+    error?: {
+        message?: string
+    }
 }
 
 export type BrowserAgentActionName =

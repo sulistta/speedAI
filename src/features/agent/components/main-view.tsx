@@ -1,31 +1,35 @@
 import type { KeyboardEvent } from 'react'
 import { ArrowUpRight, Settings2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import type { AgentStatusEntry } from '@/features/agent/types'
 import StatusFeed from '@/features/agent/components/status-feed'
+import type { AgentStatusEntry } from '@/features/agent/types'
 import { cn } from '@/lib/utils'
 
 interface MainViewProps {
     command: string
-    hasApiKey: boolean
+    configurationLabel: string
     isBootstrapping: boolean
+    isConfigured: boolean
     isSubmitting: boolean
     modelLabel: string
     onCommandChange: (value: string) => void
     onOpenSettings: () => void
     onSubmit: () => void
+    providerLabel: string
     statusEntries: AgentStatusEntry[]
 }
 
 export default function MainView({
     command,
-    hasApiKey,
+    configurationLabel,
     isBootstrapping,
+    isConfigured,
     isSubmitting,
     modelLabel,
     onCommandChange,
     onOpenSettings,
     onSubmit,
+    providerLabel,
     statusEntries
 }: MainViewProps) {
     const isBusy = isBootstrapping || isSubmitting
@@ -51,7 +55,7 @@ export default function MainView({
                     aria-label="Abrir configuracoes"
                     className={cn(
                         'h-12 w-12 rounded-2xl border border-[var(--surface-stroke)] bg-[var(--elevated-surface)] text-[var(--text-primary)] shadow-[0_14px_36px_-28px_rgba(15,23,42,0.45)] hover:bg-[var(--input-surface)]',
-                        !hasApiKey && 'border-[var(--surface-stroke-strong)]'
+                        !isConfigured && 'border-[var(--surface-stroke-strong)]'
                     )}
                     onClick={onOpenSettings}
                     size="icon"
@@ -80,12 +84,13 @@ export default function MainView({
                 <div className="mt-4 flex flex-col gap-3 border-t border-[var(--surface-stroke)] px-1 pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
                         <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
+                            {providerLabel}
+                        </span>
+                        <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
                             {modelLabel}
                         </span>
                         <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
-                            {hasApiKey
-                                ? 'API Key configurada'
-                                : 'API Key pendente'}
+                            {configurationLabel}
                         </span>
                         <span className="text-[var(--text-tertiary)]">
                             Enter envia, Shift+Enter quebra linha.

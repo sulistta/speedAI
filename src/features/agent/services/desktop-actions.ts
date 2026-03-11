@@ -1,7 +1,9 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import type {
     BrowserAgentAction,
-    BrowserAgentActionResult
+    BrowserAgentActionResult,
+    ModalChatCompletionRequest,
+    ModalChatCompletionResponse
 } from '@/features/agent/types'
 
 function assertTauriRuntime() {
@@ -20,6 +22,19 @@ export async function executeBrowserAgentAction(
     return invoke<BrowserAgentActionResult>('execute_browser_agent_action', {
         request
     })
+}
+
+export async function executeModalChatCompletion(
+    request: ModalChatCompletionRequest
+): Promise<ModalChatCompletionResponse> {
+    assertTauriRuntime()
+
+    return invoke<ModalChatCompletionResponse>(
+        'execute_modal_chat_completion',
+        {
+            request
+        }
+    )
 }
 
 export async function resetBrowserAgentSession() {

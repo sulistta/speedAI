@@ -1,21 +1,40 @@
-import { ChevronLeft, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
+import {
+    Brain,
+    ChevronLeft,
+    KeyRound,
+    ShieldCheck,
+    Sparkles
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
     GEMINI_MODEL_OPTIONS,
-    getGeminiModelLabel
+    LLM_PROVIDER_OPTIONS,
+    MODAL_BASE_URL,
+    MODAL_MODEL_OPTIONS,
+    getGeminiModelLabel,
+    getLLMProviderLabel,
+    getModalModelLabel
 } from '@/features/agent/constants'
 import { maskApiKey } from '@/features/agent/utils'
-import type { SettingsFeedback } from '@/features/agent/types'
+import type { LLMProvider, SettingsFeedback } from '@/features/agent/types'
 
 interface SettingsViewProps {
-    apiKey: string
     feedback: SettingsFeedback | null
+    geminiApiKey: string
+    geminiModelId: string
     isSaving: boolean
-    modelId: string
-    onApiKeyChange: (value: string) => void
-    onModelIdChange: (value: string) => void
+    modalApiKey: string
+    modalModelId: string
+    modalThinkingEnabled: boolean
     onBack: () => void
+    onGeminiApiKeyChange: (value: string) => void
+    onGeminiModelIdChange: (value: string) => void
+    onModalApiKeyChange: (value: string) => void
+    onModalModelIdChange: (value: string) => void
+    onModalThinkingEnabledChange: (value: boolean) => void
+    onProviderChange: (value: LLMProvider) => void
     onSave: () => void
+    provider: LLMProvider
 }
 
 const feedbackToneClasses: Record<SettingsFeedback['tone'], string> = {
@@ -26,17 +45,28 @@ const feedbackToneClasses: Record<SettingsFeedback['tone'], string> = {
 }
 
 export default function SettingsView({
-    apiKey,
     feedback,
+    geminiApiKey,
+    geminiModelId,
     isSaving,
-    modelId,
-    onApiKeyChange,
-    onModelIdChange,
+    modalApiKey,
+    modalModelId,
+    modalThinkingEnabled,
     onBack,
-    onSave
+    onGeminiApiKeyChange,
+    onGeminiModelIdChange,
+    onModalApiKeyChange,
+    onModalModelIdChange,
+    onModalThinkingEnabledChange,
+    onProviderChange,
+    onSave,
+    provider
 }: SettingsViewProps) {
-    const normalizedApiKey = apiKey.trim()
-    const selectedModelLabel = getGeminiModelLabel(modelId)
+    const selectedProviderLabel = getLLMProviderLabel(provider)
+    const normalizedGeminiApiKey = geminiApiKey.trim()
+    const normalizedModalApiKey = modalApiKey.trim()
+    const selectedGeminiModelLabel = getGeminiModelLabel(geminiModelId)
+    const selectedModalModelLabel = getModalModelLabel(modalModelId)
 
     return (
         <section className="flex h-full min-h-0 flex-col gap-5">
@@ -65,11 +95,12 @@ export default function SettingsView({
 
                         <div className="min-w-0">
                             <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
-                                Credenciais do Gemini
+                                Provider do agente
                             </h2>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                                A chave fica persistida no plugin-store do Tauri
-                                e habilita o loop de navegacao web do agente.
+                                Escolha o provider ativo e salve a API Key do
+                                runtime correspondente. Gemini e Modal ficam
+                                persistidos separadamente.
                             </p>
                         </div>
                     </div>
@@ -77,45 +108,21 @@ export default function SettingsView({
                     <div className="mt-6 space-y-3">
                         <label
                             className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
-                            htmlFor="gemini-api-key"
+                            htmlFor="llm-provider"
                         >
-                            API Key
-                        </label>
-                        <input
-                            autoComplete="off"
-                            className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
-                            id="gemini-api-key"
-                            onChange={(event) =>
-                                onApiKeyChange(event.target.value)
-                            }
-                            placeholder="Cole aqui a sua Gemini API Key"
-                            spellCheck={false}
-                            type="password"
-                            value={apiKey}
-                        />
-                        <p className="text-xs leading-5 text-[var(--text-tertiary)]">
-                            {normalizedApiKey.length > 0
-                                ? `Chave em memoria: ${maskApiKey(normalizedApiKey)}`
-                                : 'Nenhuma chave configurada ainda.'}
-                        </p>
-                    </div>
-
-                    <div className="mt-6 space-y-3">
-                        <label
-                            className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
-                            htmlFor="gemini-model"
-                        >
-                            Modelo LLM
+                            Provider ativo
                         </label>
                         <select
                             className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
-                            id="gemini-model"
+                            id="llm-provider"
                             onChange={(event) =>
-                                onModelIdChange(event.target.value)
+                                onProviderChange(
+                                    event.target.value as LLMProvider
+                                )
                             }
-                            value={modelId}
+                            value={provider}
                         >
-                            {GEMINI_MODEL_OPTIONS.map((option) => (
+                            {LLM_PROVIDER_OPTIONS.map((option) => (
                                 <option key={option.id} value={option.id}>
                                     {option.label}
                                 </option>
@@ -123,19 +130,173 @@ export default function SettingsView({
                         </select>
                         <p className="text-xs leading-5 text-[var(--text-tertiary)]">
                             O agente executara os proximos comandos com{' '}
-                            {selectedModelLabel}.
+                            {selectedProviderLabel}.
                         </p>
                     </div>
+
+                    {provider === 'modal' ? (
+                        <>
+                            <div className="mt-6 space-y-3">
+                                <label
+                                    className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
+                                    htmlFor="modal-api-key"
+                                >
+                                    Modal API Key
+                                </label>
+                                <input
+                                    autoComplete="off"
+                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    id="modal-api-key"
+                                    onChange={(event) =>
+                                        onModalApiKeyChange(event.target.value)
+                                    }
+                                    placeholder="Cole aqui a sua Modal API Key"
+                                    spellCheck={false}
+                                    type="password"
+                                    value={modalApiKey}
+                                />
+                                <p className="text-xs leading-5 text-[var(--text-tertiary)]">
+                                    {normalizedModalApiKey.length > 0
+                                        ? `Chave em memoria: ${maskApiKey(normalizedModalApiKey)}`
+                                        : 'Nenhuma chave configurada ainda.'}
+                                </p>
+                            </div>
+
+                            <div className="mt-6 space-y-3">
+                                <label
+                                    className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
+                                    htmlFor="modal-model"
+                                >
+                                    Modelo Modal
+                                </label>
+                                <select
+                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    id="modal-model"
+                                    onChange={(event) =>
+                                        onModalModelIdChange(event.target.value)
+                                    }
+                                    value={modalModelId}
+                                >
+                                    {MODAL_MODEL_OPTIONS.map((option) => (
+                                        <option
+                                            key={option.id}
+                                            value={option.id}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs leading-5 text-[var(--text-tertiary)]">
+                                    Endpoint fixo do provider:{' '}
+                                    <span className="font-medium text-[var(--text-secondary)]">
+                                        {MODAL_BASE_URL}
+                                    </span>
+                                </p>
+                            </div>
+
+                            <div className="mt-6 rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                                <label
+                                    className="flex cursor-pointer items-start gap-3"
+                                    htmlFor="modal-thinking-enabled"
+                                >
+                                    <input
+                                        checked={modalThinkingEnabled}
+                                        className="mt-1 h-4 w-4 rounded border border-[var(--surface-stroke-strong)] accent-[var(--accent)]"
+                                        id="modal-thinking-enabled"
+                                        onChange={(event) =>
+                                            onModalThinkingEnabledChange(
+                                                event.target.checked
+                                            )
+                                        }
+                                        type="checkbox"
+                                    />
+
+                                    <span className="min-w-0">
+                                        <span className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                                            <Brain className="h-4 w-4" />
+                                            Thinking do GLM-5
+                                        </span>
+                                        <span className="mt-2 block text-sm leading-6 text-[var(--text-secondary)]">
+                                            {modalThinkingEnabled
+                                                ? 'Ligado. O modelo pode usar reasoning antes de responder.'
+                                                : 'Desligado. O app enviara `thinking: { type: "disabled" }` para respostas mais diretas.'}
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="mt-6 space-y-3">
+                                <label
+                                    className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
+                                    htmlFor="gemini-api-key"
+                                >
+                                    Gemini API Key
+                                </label>
+                                <input
+                                    autoComplete="off"
+                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    id="gemini-api-key"
+                                    onChange={(event) =>
+                                        onGeminiApiKeyChange(event.target.value)
+                                    }
+                                    placeholder="Cole aqui a sua Gemini API Key"
+                                    spellCheck={false}
+                                    type="password"
+                                    value={geminiApiKey}
+                                />
+                                <p className="text-xs leading-5 text-[var(--text-tertiary)]">
+                                    {normalizedGeminiApiKey.length > 0
+                                        ? `Chave em memoria: ${maskApiKey(normalizedGeminiApiKey)}`
+                                        : 'Nenhuma chave configurada ainda.'}
+                                </p>
+                            </div>
+
+                            <div className="mt-6 space-y-3">
+                                <label
+                                    className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
+                                    htmlFor="gemini-model"
+                                >
+                                    Modelo Gemini
+                                </label>
+                                <select
+                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    id="gemini-model"
+                                    onChange={(event) =>
+                                        onGeminiModelIdChange(
+                                            event.target.value
+                                        )
+                                    }
+                                    value={geminiModelId}
+                                >
+                                    {GEMINI_MODEL_OPTIONS.map((option) => (
+                                        <option
+                                            key={option.id}
+                                            value={option.id}
+                                        >
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs leading-5 text-[var(--text-tertiary)]">
+                                    O agente executara os proximos comandos com{' '}
+                                    {selectedGeminiModelLabel}.
+                                </p>
+                            </div>
+                        </>
+                    )}
 
                     <div className="mt-6 grid gap-3 xl:grid-cols-2">
                         <div className="rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                                 <Sparkles className="h-4 w-4" />
-                                Modelo ativo
+                                Runtime ativo
                             </div>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                                {selectedModelLabel}, salvo nas configuracoes do
-                                app para as proximas execucoes.
+                                {provider === 'modal'
+                                    ? `${selectedProviderLabel} com ${selectedModalModelLabel} em ${MODAL_BASE_URL}, thinking ${modalThinkingEnabled ? 'ligado' : 'desligado'}.`
+                                    : `${selectedProviderLabel} com ${selectedGeminiModelLabel}.`}
                             </p>
                         </div>
 
@@ -181,7 +342,9 @@ export default function SettingsView({
                                 onClick={onSave}
                                 type="button"
                             >
-                                {isSaving ? 'Salvando...' : 'Salvar chave'}
+                                {isSaving
+                                    ? 'Salvando...'
+                                    : 'Salvar configuracoes'}
                             </Button>
                         </div>
                     </div>
