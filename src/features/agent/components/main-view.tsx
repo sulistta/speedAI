@@ -1,7 +1,6 @@
 import type { KeyboardEvent } from 'react'
 import { ArrowUpRight, Settings2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { GEMINI_MODEL_LABEL } from '@/features/agent/constants'
 import type { AgentStatusEntry } from '@/features/agent/types'
 import StatusFeed from '@/features/agent/components/status-feed'
 import { cn } from '@/lib/utils'
@@ -11,6 +10,7 @@ interface MainViewProps {
     hasApiKey: boolean
     isBootstrapping: boolean
     isSubmitting: boolean
+    modelLabel: string
     onCommandChange: (value: string) => void
     onOpenSettings: () => void
     onSubmit: () => void
@@ -22,6 +22,7 @@ export default function MainView({
     hasApiKey,
     isBootstrapping,
     isSubmitting,
+    modelLabel,
     onCommandChange,
     onOpenSettings,
     onSubmit,
@@ -79,7 +80,7 @@ export default function MainView({
                 <div className="mt-4 flex flex-col gap-3 border-t border-[var(--surface-stroke)] px-1 pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
                         <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
-                            {GEMINI_MODEL_LABEL}
+                            {modelLabel}
                         </span>
                         <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
                             {hasApiKey

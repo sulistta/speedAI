@@ -1,6 +1,9 @@
 import { ChevronLeft, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { GEMINI_MODEL_LABEL } from '@/features/agent/constants'
+import {
+    GEMINI_MODEL_OPTIONS,
+    getGeminiModelLabel
+} from '@/features/agent/constants'
 import { maskApiKey } from '@/features/agent/utils'
 import type { SettingsFeedback } from '@/features/agent/types'
 
@@ -8,7 +11,9 @@ interface SettingsViewProps {
     apiKey: string
     feedback: SettingsFeedback | null
     isSaving: boolean
+    modelId: string
     onApiKeyChange: (value: string) => void
+    onModelIdChange: (value: string) => void
     onBack: () => void
     onSave: () => void
 }
@@ -24,11 +29,14 @@ export default function SettingsView({
     apiKey,
     feedback,
     isSaving,
+    modelId,
     onApiKeyChange,
+    onModelIdChange,
     onBack,
     onSave
 }: SettingsViewProps) {
     const normalizedApiKey = apiKey.trim()
+    const selectedModelLabel = getGeminiModelLabel(modelId)
 
     return (
         <section className="flex h-full min-h-0 flex-col gap-5">
@@ -92,15 +100,42 @@ export default function SettingsView({
                         </p>
                     </div>
 
+                    <div className="mt-6 space-y-3">
+                        <label
+                            className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
+                            htmlFor="gemini-model"
+                        >
+                            Modelo LLM
+                        </label>
+                        <select
+                            className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                            id="gemini-model"
+                            onChange={(event) =>
+                                onModelIdChange(event.target.value)
+                            }
+                            value={modelId}
+                        >
+                            {GEMINI_MODEL_OPTIONS.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-xs leading-5 text-[var(--text-tertiary)]">
+                            O agente executara os proximos comandos com{' '}
+                            {selectedModelLabel}.
+                        </p>
+                    </div>
+
                     <div className="mt-6 grid gap-3 xl:grid-cols-2">
                         <div className="rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                                 <Sparkles className="h-4 w-4" />
-                                Modelo fixo
+                                Modelo ativo
                             </div>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                                {GEMINI_MODEL_LABEL}, mantido fixo no MVP para
-                                reduzir variacao de latencia.
+                                {selectedModelLabel}, salvo nas configuracoes do
+                                app para as proximas execucoes.
                             </p>
                         </div>
 

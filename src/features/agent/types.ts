@@ -10,6 +10,7 @@ export type AgentStatusTone =
 
 export interface GeminiSettings {
     apiKey: string
+    modelId: string
 }
 
 export type BrowserAgentActionName =

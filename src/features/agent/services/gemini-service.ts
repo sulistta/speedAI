@@ -6,7 +6,6 @@ import {
     FunctionCallingConfigMode
 } from '@google/genai'
 import {
-    GEMINI_MODEL_ID,
     MAX_AGENT_TOOL_STEPS,
     WEB_CLICK_TOOL_NAME,
     WEB_NAVIGATE_TOOL_NAME,
@@ -14,7 +13,8 @@ import {
     WEB_SCROLL_TOOL_NAME,
     WEB_SNAPSHOT_TOOL_NAME,
     WEB_TYPE_TOOL_NAME,
-    WEB_WAIT_TOOL_NAME
+    WEB_WAIT_TOOL_NAME,
+    normalizeGeminiModelId
 } from '@/features/agent/constants'
 import { executeBrowserAgentAction } from '@/features/agent/services/desktop-actions'
 import type {
@@ -473,10 +473,12 @@ function buildToolErrorPayload(error: unknown, step: number) {
 export async function runDesktopAgentCommand(
     input: string,
     apiKey: string,
+    modelId: string,
     onStatus?: (status: AgentExecutionStatus) => void
 ): Promise<AgentRunResult> {
     const cleanedInput = input.trim()
     const cleanedApiKey = apiKey.trim()
+    const cleanedModelId = normalizeGeminiModelId(modelId)
 
     if (cleanedInput.length === 0) {
         throw new Error('Digite um comando antes de enviar.')
@@ -490,7 +492,7 @@ export async function runDesktopAgentCommand(
 
     const ai = new GoogleGenAI({ apiKey: cleanedApiKey })
     const chat = ai.chats.create({
-        model: GEMINI_MODEL_ID,
+        model: cleanedModelId,
         config: {
             systemInstruction,
             temperature: 0.2,

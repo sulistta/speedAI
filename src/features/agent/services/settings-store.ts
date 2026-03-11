@@ -3,7 +3,10 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 import {
     AGENT_SETTINGS_STORE_PATH,
     BROWSER_API_KEY_STORAGE_KEY,
-    GEMINI_API_KEY_STORAGE_KEY
+    BROWSER_GEMINI_MODEL_STORAGE_KEY,
+    GEMINI_API_KEY_STORAGE_KEY,
+    GEMINI_MODEL_STORAGE_KEY,
+    normalizeGeminiModelId
 } from '@/features/agent/constants'
 import type { GeminiSettings } from '@/features/agent/types'
 
@@ -21,21 +24,28 @@ export async function loadGeminiSettings(): Promise<GeminiSettings> {
     if (!isTauri()) {
         return {
             apiKey:
-                window.localStorage.getItem(BROWSER_API_KEY_STORAGE_KEY) ?? ''
+                window.localStorage.getItem(BROWSER_API_KEY_STORAGE_KEY) ?? '',
+            modelId: normalizeGeminiModelId(
+                window.localStorage.getItem(BROWSER_GEMINI_MODEL_STORAGE_KEY)
+            )
         }
     }
 
     const apiKey =
         (await getSettingsStore().get<string>(GEMINI_API_KEY_STORAGE_KEY)) ?? ''
+    const modelId = normalizeGeminiModelId(
+        await getSettingsStore().get<string>(GEMINI_MODEL_STORAGE_KEY)
+    )
 
-    return { apiKey }
+    return { apiKey, modelId }
 }
 
 export async function saveGeminiSettings(
     settings: GeminiSettings
 ): Promise<GeminiSettings> {
     const nextSettings = {
-        apiKey: settings.apiKey.trim()
+        apiKey: settings.apiKey.trim(),
+        modelId: normalizeGeminiModelId(settings.modelId)
     }
 
     if (!isTauri()) {
@@ -48,6 +58,11 @@ export async function saveGeminiSettings(
             )
         }
 
+        window.localStorage.setItem(
+            BROWSER_GEMINI_MODEL_STORAGE_KEY,
+            nextSettings.modelId
+        )
+
         return nextSettings
     }
 
@@ -58,6 +73,8 @@ export async function saveGeminiSettings(
     } else {
         await store.set(GEMINI_API_KEY_STORAGE_KEY, nextSettings.apiKey)
     }
+
+    await store.set(GEMINI_MODEL_STORAGE_KEY, nextSettings.modelId)
 
     await store.save()
 

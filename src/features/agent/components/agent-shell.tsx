@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { startTransition, useEffect, useState } from 'react'
-import { GEMINI_MODEL_LABEL } from '@/features/agent/constants'
+import { getGeminiModelLabel } from '@/features/agent/constants'
 import MainView from '@/features/agent/components/main-view'
 import SettingsView from '@/features/agent/components/settings-view'
 import WindowChrome from '@/features/agent/components/window-chrome'
@@ -27,19 +27,24 @@ const panelTransition = {
     ease: [0.22, 1, 0.36, 1] as const
 }
 
-function buildInitialStatus(hasApiKey: boolean): AgentStatusEntry {
+function buildInitialStatus(
+    hasApiKey: boolean,
+    modelId: string
+): AgentStatusEntry {
+    const modelLabel = getGeminiModelLabel(modelId)
+
     if (hasApiKey) {
         return createStatusEntry({
             tone: 'success',
             title: 'Agente pronto',
-            detail: `${GEMINI_MODEL_LABEL} carregado com uma chave salva no store.`
+            detail: `${modelLabel} carregado com uma chave salva no store.`
         })
     }
 
     return createStatusEntry({
         tone: 'info',
         title: 'Gemini ainda nao configurado',
-        detail: 'Abra Settings e salve sua API Key para habilitar a navegacao web assistida.'
+        detail: `Abra Settings e salve sua API Key para habilitar a navegacao web assistida com ${modelLabel}.`
     })
 }
 
@@ -47,7 +52,9 @@ export default function AgentShell() {
     const [activeView, setActiveView] = useState<AgentView>('main')
     const [command, setCommand] = useState('')
     const [apiKey, setApiKey] = useState('')
+    const [modelId, setModelId] = useState('')
     const [settingsApiKeyDraft, setSettingsApiKeyDraft] = useState('')
+    const [settingsModelIdDraft, setSettingsModelIdDraft] = useState('')
     const [statusEntries, setStatusEntries] = useState<AgentStatusEntry[]>([])
     const [settingsFeedback, setSettingsFeedback] =
         useState<SettingsFeedback | null>(null)
@@ -67,9 +74,14 @@ export default function AgentShell() {
                 }
 
                 setApiKey(settings.apiKey)
+                setModelId(settings.modelId)
                 setSettingsApiKeyDraft(settings.apiKey)
+                setSettingsModelIdDraft(settings.modelId)
                 setStatusEntries([
-                    buildInitialStatus(settings.apiKey.length > 0)
+                    buildInitialStatus(
+                        settings.apiKey.length > 0,
+                        settings.modelId
+                    )
                 ])
             } catch (error) {
                 if (!isMounted) {
@@ -123,6 +135,7 @@ export default function AgentShell() {
     function openSettings() {
         setSettingsFeedback(null)
         setSettingsApiKeyDraft(apiKey)
+        setSettingsModelIdDraft(modelId)
         startTransition(() => setActiveView('settings'))
     }
 
@@ -140,17 +153,21 @@ export default function AgentShell() {
 
         try {
             const savedSettings = await saveGeminiSettings({
-                apiKey: settingsApiKeyDraft
+                apiKey: settingsApiKeyDraft,
+                modelId: settingsModelIdDraft
             })
             const hasApiKey = savedSettings.apiKey.length > 0
+            const savedModelLabel = getGeminiModelLabel(savedSettings.modelId)
 
             setApiKey(savedSettings.apiKey)
+            setModelId(savedSettings.modelId)
             setSettingsApiKeyDraft(savedSettings.apiKey)
+            setSettingsModelIdDraft(savedSettings.modelId)
             setSettingsFeedback({
                 tone: 'success',
                 message: hasApiKey
-                    ? 'API Key salva com sucesso no plugin-store.'
-                    : 'API Key removida do plugin-store.'
+                    ? `Configuracoes salvas com sucesso. Modelo: ${savedModelLabel}.`
+                    : `Modelo ${savedModelLabel} salvo. API Key removida do plugin-store.`
             })
 
             pushStatus(
@@ -160,7 +177,7 @@ export default function AgentShell() {
                         ? 'Credenciais atualizadas'
                         : 'Credenciais removidas',
                     detail: hasApiKey
-                        ? 'O agente ja pode executar navegacao web.'
+                        ? `O agente ja pode executar navegacao web com ${savedModelLabel}.`
                         : 'O agente ficou sem API Key configurada.'
                 })
             )
@@ -203,12 +220,13 @@ export default function AgentShell() {
         }
 
         setIsSubmitting(true)
+        const currentModelLabel = getGeminiModelLabel(modelId)
 
         pushStatus(
             createStatusEntry({
                 tone: 'thinking',
                 title: 'Pensando...',
-                detail: `Planejando a navegacao com ${GEMINI_MODEL_LABEL}.`,
+                detail: `Planejando a navegacao com ${currentModelLabel}.`,
                 request: trimmedCommand
             })
         )
@@ -217,6 +235,7 @@ export default function AgentShell() {
             const result = await runDesktopAgentCommand(
                 trimmedCommand,
                 apiKey,
+                modelId,
                 pushRuntimeStatus
             )
 
@@ -270,6 +289,7 @@ export default function AgentShell() {
                                     hasApiKey={apiKey.trim().length > 0}
                                     isBootstrapping={isBootstrapping}
                                     isSubmitting={isSubmitting}
+                                    modelLabel={getGeminiModelLabel(modelId)}
                                     onCommandChange={setCommand}
                                     onOpenSettings={openSettings}
                                     onSubmit={() => void handleSubmitCommand()}
@@ -280,7 +300,9 @@ export default function AgentShell() {
                                     apiKey={settingsApiKeyDraft}
                                     feedback={settingsFeedback}
                                     isSaving={isSavingSettings}
+                                    modelId={settingsModelIdDraft}
                                     onApiKeyChange={setSettingsApiKeyDraft}
+                                    onModelIdChange={setSettingsModelIdDraft}
                                     onBack={closeSettings}
                                     onSave={() => void handleSaveSettings()}
                                 />
