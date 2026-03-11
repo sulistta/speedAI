@@ -11,8 +11,11 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-process = "2"
+tauri-plugin-store = "2.4.2"
+webbrowser = "1.2.0"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
