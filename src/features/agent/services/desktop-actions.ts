@@ -1,20 +1,31 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import type {
-    WhatsappActionResult,
-    WhatsappToolArguments
+    BrowserAgentAction,
+    BrowserAgentActionResult
 } from '@/features/agent/types'
 
-export async function executeWhatsappAction(
-    args: WhatsappToolArguments
-): Promise<WhatsappActionResult> {
+function assertTauriRuntime() {
     if (!isTauri()) {
         throw new Error(
-            'A acao de desktop so pode ser executada dentro do runtime do Tauri.'
+            'A automacao web so pode ser executada dentro do runtime do Tauri.'
         )
     }
+}
 
-    return invoke<WhatsappActionResult>('execute_whatsapp_action', {
-        contact: args.contact,
-        message: args.message
+export async function executeBrowserAgentAction(
+    request: BrowserAgentAction
+): Promise<BrowserAgentActionResult> {
+    assertTauriRuntime()
+
+    return invoke<BrowserAgentActionResult>('execute_browser_agent_action', {
+        request
     })
+}
+
+export async function resetBrowserAgentSession() {
+    if (!isTauri()) {
+        return
+    }
+
+    await invoke('reset_browser_agent_session')
 }

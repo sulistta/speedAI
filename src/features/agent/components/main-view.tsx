@@ -71,7 +71,7 @@ export default function MainView({
                     id="agent-command-input"
                     onChange={(event) => onCommandChange(event.target.value)}
                     onKeyDown={handleTextareaKeyDown}
-                    placeholder="Ex.: enviar mensagem para Ana no WhatsApp dizendo 'chego em 10 min'"
+                    placeholder="Ex.: abra a documentacao do Bun, encontre como instalar dependencias e me resuma os passos"
                     rows={3}
                     value={command}
                 />

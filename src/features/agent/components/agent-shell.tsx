@@ -1,20 +1,17 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { startTransition, useEffect, useState } from 'react'
-import {
-    GEMINI_MODEL_LABEL,
-    MAX_STATUS_ENTRIES,
-    WHATSAPP_TOOL_NAME
-} from '@/features/agent/constants'
+import { GEMINI_MODEL_LABEL } from '@/features/agent/constants'
 import MainView from '@/features/agent/components/main-view'
 import SettingsView from '@/features/agent/components/settings-view'
 import WindowChrome from '@/features/agent/components/window-chrome'
-import { executeWhatsappAction } from '@/features/agent/services/desktop-actions'
+import { resetBrowserAgentSession } from '@/features/agent/services/desktop-actions'
 import { runDesktopAgentCommand } from '@/features/agent/services/gemini-service'
 import {
     loadGeminiSettings,
     saveGeminiSettings
 } from '@/features/agent/services/settings-store'
 import type {
+    AgentExecutionStatus,
     AgentStatusEntry,
     AgentView,
     SettingsFeedback
@@ -34,7 +31,7 @@ function buildInitialStatus(hasApiKey: boolean): AgentStatusEntry {
     if (hasApiKey) {
         return createStatusEntry({
             tone: 'success',
-            title: 'Gemini pronto',
+            title: 'Agente pronto',
             detail: `${GEMINI_MODEL_LABEL} carregado com uma chave salva no store.`
         })
     }
@@ -42,7 +39,7 @@ function buildInitialStatus(hasApiKey: boolean): AgentStatusEntry {
     return createStatusEntry({
         tone: 'info',
         title: 'Gemini ainda nao configurado',
-        detail: 'Abra Settings e salve sua API Key para habilitar o tool calling.'
+        detail: 'Abra Settings e salve sua API Key para habilitar a navegacao web assistida.'
     })
 }
 
@@ -100,12 +97,26 @@ export default function AgentShell() {
         }
     }, [])
 
+    useEffect(() => {
+        return () => {
+            void resetBrowserAgentSession()
+        }
+    }, [])
+
     function pushStatus(nextEntry: AgentStatusEntry) {
         setStatusEntries((currentEntries) =>
-            prependStatusEntry(
-                currentEntries.slice(0, MAX_STATUS_ENTRIES - 1),
-                nextEntry
-            )
+            prependStatusEntry(currentEntries, nextEntry)
+        )
+    }
+
+    function pushRuntimeStatus(status: AgentExecutionStatus) {
+        pushStatus(
+            createStatusEntry({
+                tone: status.tone,
+                title: status.title,
+                detail: status.detail,
+                toolName: status.toolName
+            })
         )
     }
 
@@ -149,7 +160,7 @@ export default function AgentShell() {
                         ? 'Credenciais atualizadas'
                         : 'Credenciais removidas',
                     detail: hasApiKey
-                        ? 'O Gemini ja pode ser usado pelo agente.'
+                        ? 'O agente ja pode executar navegacao web.'
                         : 'O agente ficou sem API Key configurada.'
                 })
             )
@@ -197,53 +208,26 @@ export default function AgentShell() {
             createStatusEntry({
                 tone: 'thinking',
                 title: 'Pensando...',
-                detail: `Interpretando a sua intencao com ${GEMINI_MODEL_LABEL}.`,
+                detail: `Planejando a navegacao com ${GEMINI_MODEL_LABEL}.`,
                 request: trimmedCommand
             })
         )
 
         try {
-            const result = await runDesktopAgentCommand(trimmedCommand, apiKey)
+            const result = await runDesktopAgentCommand(
+                trimmedCommand,
+                apiKey,
+                pushRuntimeStatus
+            )
 
-            if (result.kind === 'tool-call') {
-                const {
-                    args: { contact, message }
-                } = result.toolCall
-
-                pushStatus(
-                    createStatusEntry({
-                        tone: 'executing',
-                        title: 'Abrindo WhatsApp Web',
-                        detail: `Contato: ${contact}. Mensagem: "${message}"`,
-                        request: trimmedCommand,
-                        toolName: WHATSAPP_TOOL_NAME
-                    })
-                )
-
-                const executionResult = await executeWhatsappAction({
-                    contact,
-                    message
+            pushStatus(
+                createStatusEntry({
+                    tone: 'success',
+                    title: 'Tarefa concluida',
+                    detail: result.message,
+                    request: trimmedCommand
                 })
-
-                pushStatus(
-                    createStatusEntry({
-                        tone: 'success',
-                        title: executionResult.status,
-                        detail: executionResult.detail,
-                        request: trimmedCommand,
-                        toolName: WHATSAPP_TOOL_NAME
-                    })
-                )
-            } else {
-                pushStatus(
-                    createStatusEntry({
-                        tone: 'success',
-                        title: 'Resposta do agente',
-                        detail: result.message,
-                        request: trimmedCommand
-                    })
-                )
-            }
+            )
 
             setCommand('')
             closeSettings()

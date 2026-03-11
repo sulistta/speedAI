@@ -61,7 +61,7 @@ export default function SettingsView({
                             </h2>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                                 A chave fica persistida no plugin-store do Tauri
-                                e habilita o function calling do agente.
+                                e habilita o loop de navegacao web do agente.
                             </p>
                         </div>
                     </div>
@@ -107,11 +107,12 @@ export default function SettingsView({
                         <div className="rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                                 <ShieldCheck className="h-4 w-4" />
-                                Tool disponivel
+                                Tools web
                             </div>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                                `open_whatsapp_and_send_message(contact,
-                                message)`
+                                `web_navigate`, `web_snapshot`, `web_click`,
+                                `web_type`, `web_press`, `web_wait`,
+                                `web_scroll`
                             </p>
                         </div>
                     </div>
