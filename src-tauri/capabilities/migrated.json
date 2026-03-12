@@ -3,10 +3,31 @@
   "description": "permissions that were migrated from v1",
   "local": true,
   "windows": [
-    "main"
+    "main",
+    "settings",
+    "result"
   ],
   "permissions": [
     "core:default",
-    "process:default"
+    "core:event:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "core:window:allow-minimize",
+    "core:window:allow-show",
+    "core:window:allow-start-dragging",
+    "core:window:allow-unminimize",
+    "process:default",
+    "store:default",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "args": false,
+          "name": "binaries/web-agent-sidecar",
+          "sidecar": true
+        }
+      ]
+    }
   ]
 }

@@ -1,16 +1,90 @@
 @import 'tailwindcss';
 
+:root {
+    color-scheme: light;
+    --font-sans:
+        'SF Pro Display', 'IBM Plex Sans', 'Segoe UI Variable', sans-serif;
+    --window-fill: rgb(240, 243, 247);
+    --app-background: rgba(246, 248, 250, 0.88);
+    --window-surface: rgba(255, 255, 255, 0.7);
+    --window-chrome-surface: rgba(255, 255, 255, 0.58);
+    --panel-background: rgba(255, 255, 255, 0.74);
+    --elevated-surface: rgba(255, 255, 255, 0.82);
+    --input-surface: rgba(247, 248, 250, 0.92);
+    --chrome-pill: rgba(243, 245, 248, 0.82);
+    --surface-stroke: rgba(15, 23, 42, 0.08);
+    --surface-stroke-strong: rgba(15, 23, 42, 0.15);
+    --text-primary: rgb(17, 24, 39);
+    --text-secondary: rgba(17, 24, 39, 0.74);
+    --text-tertiary: rgba(17, 24, 39, 0.5);
+    --placeholder: rgba(17, 24, 39, 0.32);
+    --muted-chip-bg: rgba(17, 24, 39, 0.045);
+    --muted-chip-border: rgba(17, 24, 39, 0.08);
+    --focus-ring: rgba(96, 165, 250, 0.18);
+    --accent: rgb(17, 24, 39);
+    --accent-contrast: rgb(255, 255, 255);
+    --window-shadow: 0 42px 120px -58px rgba(15, 23, 42, 0.38);
+    --ambient-blue: rgba(146, 180, 255, 0.3);
+    --ambient-mint: rgba(190, 225, 216, 0.32);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        color-scheme: dark;
+        --window-fill: rgb(10, 12, 16);
+        --app-background: rgba(10, 12, 16, 0.92);
+        --window-surface: rgba(23, 27, 34, 0.72);
+        --window-chrome-surface: rgba(28, 33, 41, 0.58);
+        --panel-background: rgba(20, 24, 30, 0.74);
+        --elevated-surface: rgba(24, 29, 37, 0.82);
+        --input-surface: rgba(15, 18, 24, 0.92);
+        --chrome-pill: rgba(29, 34, 43, 0.78);
+        --surface-stroke: rgba(255, 255, 255, 0.08);
+        --surface-stroke-strong: rgba(255, 255, 255, 0.14);
+        --text-primary: rgba(248, 250, 252, 0.98);
+        --text-secondary: rgba(226, 232, 240, 0.78);
+        --text-tertiary: rgba(203, 213, 225, 0.54);
+        --placeholder: rgba(203, 213, 225, 0.28);
+        --muted-chip-bg: rgba(255, 255, 255, 0.05);
+        --muted-chip-border: rgba(255, 255, 255, 0.08);
+        --focus-ring: rgba(96, 165, 250, 0.2);
+        --accent: rgb(243, 244, 246);
+        --accent-contrast: rgb(14, 16, 20);
+        --window-shadow: 0 48px 140px -64px rgba(0, 0, 0, 0.78);
+        --ambient-blue: rgba(96, 165, 250, 0.18);
+        --ambient-mint: rgba(94, 234, 212, 0.14);
+    }
+}
+
 @layer base {
     * {
         box-sizing: border-box;
     }
     html {
-        @apply h-full overscroll-none;
+        height: 100%;
+        overscroll-behavior: none;
     }
     body {
-        @apply m-0 min-h-screen bg-white text-neutral-950;
+        min-height: 100vh;
+        margin: 0;
+        background: var(--window-fill);
+        color: var(--text-primary);
+        font-family: var(--font-sans);
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
     }
     #root {
-        @apply min-h-screen;
+        min-height: 100vh;
+    }
+    button,
+    input,
+    textarea {
+        font: inherit;
+    }
+    textarea {
+        resize: none;
+    }
+    ::selection {
+        background: var(--focus-ring);
     }
 }

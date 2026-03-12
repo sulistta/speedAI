@@ -1,12 +1,19 @@
 {
   "build": {
-    "beforeDevCommand": "bun dev",
-    "beforeBuildCommand": "bun build",
+    "beforeDevCommand": "bun run dev:frontend",
+    "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420"
   },
   "bundle": {
     "active": true,
+    "externalBin": [
+      "binaries/web-agent-sidecar"
+    ],
+    "resources": [
+      "resources/web-agent-browser/**/*",
+      "resources/web-agent-browser-manifest.json"
+    ],
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -27,9 +34,18 @@
     },
     "windows": [
       {
-        "title": "Tauri App",
-        "width": 800,
-        "height": 600,
+        "title": "SpeedAI",
+        "width": 420,
+        "height": 360,
+        "minWidth": 420,
+        "minHeight": 360,
+        "center": true,
+        "alwaysOnTop": true,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
         "useHttpsScheme": true
       }
     ]

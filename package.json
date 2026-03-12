@@ -18,9 +18,13 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc && vite build",
+        "dev:frontend": "bun run prepare:web-agent && vite",
+        "build": "bun run prepare:web-agent && bun run build:web",
+        "build:web": "tsc && vite build",
         "preview": "vite preview",
         "tauri": "tauri",
+        "prepare:web-agent": "bun scripts/prepare-web-agent.ts",
+        "web-agent:sidecar": "bun scripts/web-agent-sidecar.ts",
         "prepare": "husky",
         "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
         "format": "prettier --write ."
@@ -29,11 +33,17 @@
         "**/*": "prettier --write --ignore-unknown"
     },
     "dependencies": {
+        "@google/genai": "^1.44.0",
         "@radix-ui/react-slot": "^1.2.0",
         "@tailwindcss/vite": "^4.1.16",
+        "@tauri-apps/api": "^2.10.1",
         "@tauri-apps/plugin-process": "^2.3.1",
+        "@tauri-apps/plugin-store": "^2.4.2",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+        "framer-motion": "^12.35.2",
+        "lucide-react": "^0.577.0",
+        "playwright": "^1.58.2",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "react-error-boundary": "^6.0.0",
