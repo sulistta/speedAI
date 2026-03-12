@@ -99,6 +99,7 @@ const MAX_REGIONS = 6
 const MAX_ELEMENTS = 32
 const MAX_REGION_TEXT_LENGTH = 180
 const MAX_ELEMENT_TEXT_LENGTH = 120
+const INITIAL_PAGE_TIMEOUT_MS = 1500
 
 let context: BrowserContext | null = null
 let activePage: Page | null = null
@@ -204,6 +205,57 @@ async function settlePage(page: Page, delayMs = 250) {
     }
 }
 
+function listOpenPages(browserContext: BrowserContext) {
+    return browserContext.pages().filter((page) => !page.isClosed())
+}
+
+function isBrowserInternalPage(page: Page) {
+    const currentUrl = page.url().trim().toLowerCase()
+
+    return (
+        currentUrl.startsWith('chrome://') ||
+        currentUrl.startsWith('chrome-extension://') ||
+        currentUrl.startsWith('edge://') ||
+        currentUrl.startsWith('devtools://')
+    )
+}
+
+function pickReusablePage(pages: Page[]) {
+    const preferredPage = [...pages]
+        .reverse()
+        .find((page) => !isBrowserInternalPage(page))
+
+    return preferredPage ?? pages.at(-1) ?? null
+}
+
+async function waitForInitialPage(browserContext: BrowserContext) {
+    const existingPages = listOpenPages(browserContext)
+
+    if (existingPages.length > 0) {
+        return existingPages
+    }
+
+    const deadline = Date.now() + INITIAL_PAGE_TIMEOUT_MS
+
+    while (Date.now() < deadline) {
+        const remainingTimeMs = deadline - Date.now()
+
+        await browserContext
+            .waitForEvent('page', {
+                timeout: Math.min(remainingTimeMs, 250)
+            })
+            .catch(() => undefined)
+
+        const nextPages = listOpenPages(browserContext)
+
+        if (nextPages.length > 0) {
+            return nextPages
+        }
+    }
+
+    return listOpenPages(browserContext)
+}
+
 async function ensurePage() {
     if (context === null) {
         const profileDir = await getBrowserProfileDir()
@@ -223,13 +275,21 @@ async function ensurePage() {
         context.setDefaultTimeout(12_000)
     }
 
-    const existingPage = context.pages().find((page) => !page.isClosed())
+    if (activePage && !activePage.isClosed()) {
+        await activePage.bringToFront().catch(() => undefined)
+        return activePage
+    }
 
-    if (existingPage) {
+    const existingPages = await waitForInitialPage(context)
+    const existingPage = pickReusablePage(existingPages)
+
+    if (existingPage && !isBrowserInternalPage(existingPage)) {
         activePage = existingPage
     } else {
         activePage = await context.newPage()
     }
+
+    await activePage.bringToFront().catch(() => undefined)
 
     return activePage
 }
