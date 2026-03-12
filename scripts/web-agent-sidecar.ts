@@ -99,7 +99,6 @@ const MAX_REGIONS = 6
 const MAX_ELEMENTS = 32
 const MAX_REGION_TEXT_LENGTH = 180
 const MAX_ELEMENT_TEXT_LENGTH = 120
-const INITIAL_PAGE_TIMEOUT_MS = 1500
 
 let context: BrowserContext | null = null
 let activePage: Page | null = null
@@ -220,43 +219,13 @@ function isBrowserInternalPage(page: Page) {
     )
 }
 
-function pickReusablePage(pages: Page[]) {
-    const preferredPage = [...pages]
-        .reverse()
-        .find((page) => !isBrowserInternalPage(page))
-
-    return preferredPage ?? pages.at(-1) ?? null
-}
-
-async function waitForInitialPage(browserContext: BrowserContext) {
-    const existingPages = listOpenPages(browserContext)
-
-    if (existingPages.length > 0) {
-        return existingPages
-    }
-
-    const deadline = Date.now() + INITIAL_PAGE_TIMEOUT_MS
-
-    while (Date.now() < deadline) {
-        const remainingTimeMs = deadline - Date.now()
-
-        await browserContext
-            .waitForEvent('page', {
-                timeout: Math.min(remainingTimeMs, 250)
-            })
-            .catch(() => undefined)
-
-        const nextPages = listOpenPages(browserContext)
-
-        if (nextPages.length > 0) {
-            return nextPages
-        }
-    }
-
-    return listOpenPages(browserContext)
+function pickStartupPage(pages: Page[]) {
+    return [...pages].reverse().find((page) => !isBrowserInternalPage(page))
 }
 
 async function ensurePage() {
+    const shouldAdoptStartupPage = context === null
+
     if (context === null) {
         const profileDir = await getBrowserProfileDir()
         const browserExecutablePath = await resolveBrowserExecutablePath()
@@ -280,11 +249,15 @@ async function ensurePage() {
         return activePage
     }
 
-    const existingPages = await waitForInitialPage(context)
-    const existingPage = pickReusablePage(existingPages)
+    if (shouldAdoptStartupPage) {
+        const existingPages = listOpenPages(context)
+        const existingPage = pickStartupPage(existingPages)
 
-    if (existingPage && !isBrowserInternalPage(existingPage)) {
-        activePage = existingPage
+        if (existingPage) {
+            activePage = existingPage
+        } else {
+            activePage = await context.newPage()
+        }
     } else {
         activePage = await context.newPage()
     }
