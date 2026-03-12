@@ -40,9 +40,12 @@ interface SettingsViewProps {
 const feedbackToneClasses: Record<SettingsFeedback['tone'], string> = {
     idle: 'border-[var(--surface-stroke)] bg-[var(--input-surface)] text-[var(--text-secondary)]',
     success:
-        'border-emerald-500/25 bg-emerald-500/10 text-[var(--text-secondary)]',
-    error: 'border-rose-500/25 bg-rose-500/10 text-[var(--text-secondary)]'
+        'border-emerald-500/20 bg-emerald-500/10 text-[var(--text-secondary)]',
+    error: 'border-rose-500/20 bg-rose-500/10 text-[var(--text-secondary)]'
 }
+
+const fieldClassName =
+    'w-full rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-3.5 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]'
 
 export default function SettingsView({
     feedback,
@@ -69,10 +72,10 @@ export default function SettingsView({
     const selectedModalModelLabel = getModalModelLabel(modalModelId)
 
     return (
-        <section className="flex h-full min-h-0 flex-col gap-5">
-            <div className="flex shrink-0 items-center justify-between gap-4">
+        <section className="flex h-full min-h-0 flex-col gap-4">
+            <div className="flex shrink-0 items-center justify-between gap-4 px-1">
                 <Button
-                    className="h-11 rounded-2xl border border-[var(--surface-stroke)] bg-[var(--elevated-surface)] px-4 text-[var(--text-primary)] hover:bg-[var(--input-surface)]"
+                    className="h-10 rounded-[1.1rem] border border-[var(--surface-stroke)] bg-[var(--chrome-pill)] px-3.5 text-[var(--text-primary)] hover:bg-[var(--input-surface)]"
                     onClick={onBack}
                     type="button"
                     variant="ghost"
@@ -81,20 +84,20 @@ export default function SettingsView({
                     Voltar
                 </Button>
 
-                <div className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.28em] text-[var(--text-tertiary)]">
+                <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--text-tertiary)]">
                     Settings
-                </div>
+                </p>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                <div className="rounded-[2rem] border border-[var(--surface-stroke)] bg-[var(--elevated-surface)] p-5 shadow-[0_18px_48px_-34px_rgba(15,23,42,0.45)] sm:p-6">
+                <div className="rounded-[1.85rem] border border-[var(--surface-stroke)] bg-[var(--panel-background)] p-5 shadow-[0_30px_80px_-56px_rgba(15,23,42,0.42)] sm:p-6">
                     <div className="flex items-start gap-4">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[var(--surface-stroke)] bg-[var(--input-surface)] text-[var(--text-primary)]">
-                            <KeyRound className="h-5 w-5" />
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.25rem] border border-[var(--surface-stroke)] bg-[var(--chrome-pill)] text-[var(--text-primary)]">
+                            <KeyRound className="h-4 w-4" />
                         </div>
 
                         <div className="min-w-0">
-                            <h2 className="text-3xl font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+                            <h2 className="text-[1.7rem] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
                                 Provider do agente
                             </h2>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
@@ -113,7 +116,7 @@ export default function SettingsView({
                             Provider ativo
                         </label>
                         <select
-                            className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                            className={fieldClassName}
                             id="llm-provider"
                             onChange={(event) =>
                                 onProviderChange(
@@ -145,7 +148,7 @@ export default function SettingsView({
                                 </label>
                                 <input
                                     autoComplete="off"
-                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    className={fieldClassName}
                                     id="modal-api-key"
                                     onChange={(event) =>
                                         onModalApiKeyChange(event.target.value)
@@ -170,7 +173,7 @@ export default function SettingsView({
                                     Modelo Modal
                                 </label>
                                 <select
-                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    className={fieldClassName}
                                     id="modal-model"
                                     onChange={(event) =>
                                         onModalModelIdChange(event.target.value)
@@ -194,7 +197,7 @@ export default function SettingsView({
                                 </p>
                             </div>
 
-                            <div className="mt-6 rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                            <div className="mt-6 rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
                                 <label
                                     className="flex cursor-pointer items-start gap-3"
                                     htmlFor="modal-thinking-enabled"
@@ -236,7 +239,7 @@ export default function SettingsView({
                                 </label>
                                 <input
                                     autoComplete="off"
-                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    className={fieldClassName}
                                     id="gemini-api-key"
                                     onChange={(event) =>
                                         onGeminiApiKeyChange(event.target.value)
@@ -261,7 +264,7 @@ export default function SettingsView({
                                     Modelo Gemini
                                 </label>
                                 <select
-                                    className="w-full rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-sm text-[var(--text-primary)] outline-none transition-shadow focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]"
+                                    className={fieldClassName}
                                     id="gemini-model"
                                     onChange={(event) =>
                                         onGeminiModelIdChange(
@@ -288,7 +291,7 @@ export default function SettingsView({
                     )}
 
                     <div className="mt-6 grid gap-3 xl:grid-cols-2">
-                        <div className="rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                        <div className="rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                                 <Sparkles className="h-4 w-4" />
                                 Runtime ativo
@@ -300,7 +303,7 @@ export default function SettingsView({
                             </p>
                         </div>
 
-                        <div className="rounded-[1.5rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                        <div className="rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
                                 <ShieldCheck className="h-4 w-4" />
                                 Tools web
@@ -315,20 +318,20 @@ export default function SettingsView({
 
                     {feedback ? (
                         <div
-                            className={`mt-6 rounded-[1.5rem] border px-4 py-3 text-sm leading-6 ${feedbackToneClasses[feedback.tone]}`}
+                            className={`mt-6 rounded-[1.35rem] border px-4 py-3 text-sm leading-6 ${feedbackToneClasses[feedback.tone]}`}
                         >
                             {feedback.message}
                         </div>
                     ) : null}
 
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-xs uppercase tracking-[0.24em] text-[var(--text-tertiary)]">
+                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                             Persistencia desktop via Tauri plugin-store
                         </p>
 
                         <div className="flex flex-col gap-3 sm:flex-row">
                             <Button
-                                className="h-11 rounded-2xl border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-5 text-[var(--text-primary)] hover:bg-[var(--muted-chip-bg)]"
+                                className="h-10 rounded-[1.1rem] border border-[var(--surface-stroke)] bg-[var(--chrome-pill)] px-4 text-[var(--text-primary)] hover:bg-[var(--input-surface)]"
                                 onClick={onBack}
                                 type="button"
                                 variant="ghost"
@@ -337,7 +340,7 @@ export default function SettingsView({
                             </Button>
 
                             <Button
-                                className="h-11 rounded-2xl bg-[var(--accent)] px-5 text-[var(--accent-contrast)] hover:opacity-92"
+                                className="h-10 rounded-[1.1rem] bg-[var(--accent)] px-4 text-[var(--accent-contrast)] shadow-[0_20px_52px_-30px_rgba(15,23,42,0.6)] hover:opacity-92"
                                 disabled={isSaving}
                                 onClick={onSave}
                                 type="button"

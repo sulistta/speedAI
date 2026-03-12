@@ -1,13 +1,15 @@
 import type { KeyboardEvent } from 'react'
-import { ArrowUpRight, Settings2, Sparkles } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { ArrowUpRight, Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import StatusFeed from '@/features/agent/components/status-feed'
+import StatusSurface from '@/features/agent/components/status-surface'
 import type { AgentStatusEntry } from '@/features/agent/types'
 import { cn } from '@/lib/utils'
 
 interface MainViewProps {
     command: string
     configurationLabel: string
+    currentRequest: string
     isBootstrapping: boolean
     isConfigured: boolean
     isSubmitting: boolean
@@ -16,12 +18,27 @@ interface MainViewProps {
     onOpenSettings: () => void
     onSubmit: () => void
     providerLabel: string
-    statusEntries: AgentStatusEntry[]
+    statusEntry: AgentStatusEntry | null
 }
+
+const surfaceTransition = {
+    duration: 0.22,
+    ease: [0.22, 1, 0.36, 1] as const
+}
+
+const statusTextToneStyles = {
+    idle: 'text-[var(--text-tertiary)]',
+    info: 'text-sky-600 dark:text-sky-300',
+    thinking: 'text-amber-600 dark:text-amber-300',
+    executing: 'text-cyan-600 dark:text-cyan-300',
+    success: 'text-emerald-600 dark:text-emerald-300',
+    error: 'text-rose-600 dark:text-rose-300'
+} as const
 
 export default function MainView({
     command,
     configurationLabel,
+    currentRequest,
     isBootstrapping,
     isConfigured,
     isSubmitting,
@@ -30,9 +47,13 @@ export default function MainView({
     onOpenSettings,
     onSubmit,
     providerLabel,
-    statusEntries
+    statusEntry
 }: MainViewProps) {
     const isBusy = isBootstrapping || isSubmitting
+    const showExecutionSurface = isBusy
+    const helperCopy = statusEntry
+        ? `${statusEntry.title}. ${statusEntry.detail}`
+        : 'Enter envia. Shift+Enter quebra linha.'
 
     function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -42,75 +63,128 @@ export default function MainView({
     }
 
     return (
-        <section className="flex h-full min-h-0 flex-col gap-5">
-            <div className="flex shrink-0 items-start justify-between gap-4">
-                <div className="max-w-2xl">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.3em] text-[var(--text-tertiary)]">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        SpeedAI Agent
-                    </div>
-                </div>
-
-                <Button
-                    aria-label="Abrir configuracoes"
-                    className={cn(
-                        'h-12 w-12 rounded-2xl border border-[var(--surface-stroke)] bg-[var(--elevated-surface)] text-[var(--text-primary)] shadow-[0_14px_36px_-28px_rgba(15,23,42,0.45)] hover:bg-[var(--input-surface)]',
-                        !isConfigured && 'border-[var(--surface-stroke-strong)]'
-                    )}
-                    onClick={onOpenSettings}
-                    size="icon"
-                    variant="ghost"
-                >
-                    <Settings2 className="h-5 w-5" />
-                </Button>
-            </div>
-
-            <div className="shrink-0 rounded-[2rem] border border-[var(--surface-stroke)] bg-[var(--elevated-surface)] p-4 shadow-[0_18px_48px_-34px_rgba(15,23,42,0.45)] sm:p-5">
-                <label className="sr-only" htmlFor="agent-command-input">
-                    Comando do agente
-                </label>
-
-                <textarea
-                    className="min-h-28 max-h-44 w-full overflow-y-auto rounded-[1.6rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-4 text-[1.05rem] leading-7 text-[var(--text-primary)] outline-none placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)] sm:text-[1.12rem]"
-                    disabled={isBusy}
-                    id="agent-command-input"
-                    onChange={(event) => onCommandChange(event.target.value)}
-                    onKeyDown={handleTextareaKeyDown}
-                    placeholder="Ex.: abra a documentacao do Bun, encontre como instalar dependencias e me resuma os passos"
-                    rows={3}
-                    value={command}
-                />
-
-                <div className="mt-4 flex flex-col gap-3 border-t border-[var(--surface-stroke)] px-1 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--text-secondary)]">
-                        <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
-                            {providerLabel}
-                        </span>
-                        <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
-                            {modelLabel}
-                        </span>
-                        <span className="rounded-full border border-[var(--muted-chip-border)] bg-[var(--muted-chip-bg)] px-3 py-1.5 font-medium">
-                            {configurationLabel}
-                        </span>
-                        <span className="text-[var(--text-tertiary)]">
-                            Enter envia, Shift+Enter quebra linha.
-                        </span>
-                    </div>
-
+        <section className="flex h-full min-h-0 items-center justify-center">
+            <div className="flex w-full max-w-[760px] flex-col gap-4">
+                <div className="flex items-end gap-3 sm:gap-4">
                     <Button
-                        className="h-11 rounded-2xl bg-[var(--accent)] px-5 text-sm font-medium text-[var(--accent-contrast)] shadow-[0_22px_50px_-30px_rgba(15,23,42,0.75)] hover:opacity-92"
-                        disabled={isBusy || command.trim().length === 0}
-                        onClick={onSubmit}
+                        aria-label="Abrir configuracoes"
+                        className={cn(
+                            'h-10 w-10 shrink-0 rounded-[1.15rem] border border-[var(--surface-stroke)] bg-[var(--chrome-pill)] text-[var(--text-primary)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.55)] hover:bg-[var(--input-surface)]',
+                            !isConfigured &&
+                                'border-[var(--surface-stroke-strong)]'
+                        )}
+                        onClick={onOpenSettings}
+                        size="icon"
                         type="button"
+                        variant="ghost"
                     >
-                        <ArrowUpRight className="h-4 w-4" />
-                        {isSubmitting ? 'Executando...' : 'Executar'}
+                        <Settings2 className="h-4 w-4" />
                     </Button>
-                </div>
-            </div>
 
-            <div className="min-h-0 flex-1 overflow-hidden">
-                <StatusFeed entries={statusEntries} />
+                    <div className="min-w-0 flex-1">
+                        <AnimatePresence initial={false} mode="wait">
+                            {showExecutionSurface ? (
+                                <motion.div
+                                    animate={{
+                                        opacity: 1,
+                                        y: 0,
+                                        filter: 'blur(0px)'
+                                    }}
+                                    exit={{
+                                        opacity: 0,
+                                        y: -8,
+                                        filter: 'blur(10px)'
+                                    }}
+                                    initial={{
+                                        opacity: 0,
+                                        y: 12,
+                                        filter: 'blur(12px)'
+                                    }}
+                                    key="status-surface"
+                                    transition={surfaceTransition}
+                                >
+                                    <StatusSurface
+                                        entry={statusEntry}
+                                        isActive={isBusy}
+                                        request={currentRequest}
+                                    />
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    animate={{
+                                        opacity: 1,
+                                        y: 0,
+                                        filter: 'blur(0px)'
+                                    }}
+                                    className="relative"
+                                    exit={{
+                                        opacity: 0,
+                                        y: 8,
+                                        filter: 'blur(10px)'
+                                    }}
+                                    initial={{
+                                        opacity: 0,
+                                        y: 12,
+                                        filter: 'blur(12px)'
+                                    }}
+                                    key="command-input"
+                                    transition={surfaceTransition}
+                                >
+                                    <label
+                                        className="sr-only"
+                                        htmlFor="agent-command-input"
+                                    >
+                                        Comando do agente
+                                    </label>
+
+                                    <textarea
+                                        className="min-h-[116px] max-h-44 w-full overflow-y-auto rounded-[1.7rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-5 py-5 pr-20 text-[1rem] leading-7 text-[var(--text-primary)] shadow-[0_28px_70px_-46px_rgba(15,23,42,0.42)] outline-none transition-[border-color,box-shadow,background] placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)] sm:text-[1.08rem]"
+                                        disabled={isBusy}
+                                        id="agent-command-input"
+                                        onChange={(event) =>
+                                            onCommandChange(event.target.value)
+                                        }
+                                        onKeyDown={handleTextareaKeyDown}
+                                        placeholder="Peça uma ação para o agente."
+                                        rows={3}
+                                        value={command}
+                                    />
+
+                                    <Button
+                                        aria-label="Executar comando"
+                                        className="absolute bottom-3.5 right-3.5 h-11 w-11 rounded-full bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[0_20px_55px_-28px_rgba(15,23,42,0.72)] hover:opacity-92"
+                                        disabled={
+                                            isBusy ||
+                                            command.trim().length === 0
+                                        }
+                                        onClick={onSubmit}
+                                        size="icon"
+                                        type="button"
+                                    >
+                                        <ArrowUpRight className="h-4 w-4" />
+                                    </Button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-1 px-1.5 sm:flex-row sm:items-center sm:justify-between">
+                    <p
+                        className={cn(
+                            'text-xs leading-5',
+                            statusEntry
+                                ? statusTextToneStyles[statusEntry.tone]
+                                : statusTextToneStyles.idle
+                        )}
+                    >
+                        {helperCopy}
+                    </p>
+
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                        {providerLabel} · {modelLabel} · {configurationLabel}
+                    </p>
+                </div>
             </div>
         </section>
     )

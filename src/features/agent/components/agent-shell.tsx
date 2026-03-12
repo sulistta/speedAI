@@ -28,11 +28,7 @@ import type {
     LLMProvider,
     SettingsFeedback
 } from '@/features/agent/types'
-import {
-    createStatusEntry,
-    getErrorMessage,
-    prependStatusEntry
-} from '@/features/agent/utils'
+import { createStatusEntry, getErrorMessage } from '@/features/agent/utils'
 
 const panelTransition = {
     duration: 0.24,
@@ -79,7 +75,10 @@ export default function AgentShell() {
     const [settings, setSettings] = useState<AgentLLMSettings>(DEFAULT_SETTINGS)
     const [settingsDraft, setSettingsDraft] =
         useState<AgentLLMSettings>(DEFAULT_SETTINGS)
-    const [statusEntries, setStatusEntries] = useState<AgentStatusEntry[]>([])
+    const [activeStatus, setActiveStatus] = useState<AgentStatusEntry | null>(
+        null
+    )
+    const [currentRequest, setCurrentRequest] = useState('')
     const [settingsFeedback, setSettingsFeedback] =
         useState<SettingsFeedback | null>(null)
     const [isBootstrapping, setIsBootstrapping] = useState(true)
@@ -104,19 +103,19 @@ export default function AgentShell() {
 
                 setSettings(loadedSettings)
                 setSettingsDraft(loadedSettings)
-                setStatusEntries([buildInitialStatus(loadedSettings)])
+                setActiveStatus(buildInitialStatus(loadedSettings))
             } catch (error) {
                 if (!isMounted) {
                     return
                 }
 
-                setStatusEntries([
+                setActiveStatus(
                     createStatusEntry({
                         tone: 'error',
                         title: 'Falha ao carregar configuracoes',
                         detail: getErrorMessage(error)
                     })
-                ])
+                )
             } finally {
                 if (isMounted) {
                     setIsBootstrapping(false)
@@ -138,9 +137,7 @@ export default function AgentShell() {
     }, [])
 
     function pushStatus(nextEntry: AgentStatusEntry) {
-        setStatusEntries((currentEntries) =>
-            prependStatusEntry(currentEntries, nextEntry)
-        )
+        setActiveStatus(nextEntry)
     }
 
     function pushRuntimeStatus(status: AgentExecutionStatus) {
@@ -235,11 +232,12 @@ export default function AgentShell() {
         }
 
         setIsSubmitting(true)
+        setCurrentRequest(trimmedCommand)
 
         pushStatus(
             createStatusEntry({
                 tone: 'thinking',
-                title: 'Pensando...',
+                title: 'Pensando',
                 detail: `Planejando a navegacao com ${activeProviderLabel} (${activeModelLabel}).`,
                 request: trimmedCommand
             })
@@ -274,15 +272,16 @@ export default function AgentShell() {
             )
         } finally {
             setIsSubmitting(false)
+            setCurrentRequest('')
         }
     }
 
     return (
-        <main className="relative min-h-screen overflow-hidden bg-[var(--window-fill)] text-[var(--text-primary)]">
-            <section className="relative flex h-screen w-screen flex-col overflow-hidden bg-[var(--window-fill)] p-4 sm:p-5">
+        <main className="min-h-screen overflow-hidden px-3 py-3 text-[var(--text-primary)] sm:px-5 sm:py-5">
+            <section className="relative mx-auto flex h-[calc(100vh-1.5rem)] w-full max-w-[940px] flex-col sm:h-[calc(100vh-2.5rem)]">
                 <WindowChrome />
 
-                <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+                <div className="min-h-0 flex-1 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
                     <AnimatePresence mode="wait">
                         <motion.div
                             animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
@@ -300,6 +299,7 @@ export default function AgentShell() {
                                 <MainView
                                     command={command}
                                     configurationLabel={configurationLabel}
+                                    currentRequest={currentRequest}
                                     isBootstrapping={isBootstrapping}
                                     isConfigured={isConfigured}
                                     isSubmitting={isSubmitting}
@@ -308,7 +308,7 @@ export default function AgentShell() {
                                     onOpenSettings={openSettings}
                                     onSubmit={() => void handleSubmitCommand()}
                                     providerLabel={activeProviderLabel}
-                                    statusEntries={statusEntries}
+                                    statusEntry={activeStatus}
                                 />
                             ) : (
                                 <SettingsView
