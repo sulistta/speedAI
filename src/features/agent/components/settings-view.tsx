@@ -19,6 +19,7 @@ import { maskApiKey } from '@/features/agent/utils'
 import type { LLMProvider, SettingsFeedback } from '@/features/agent/types'
 
 interface SettingsViewProps {
+    backLabel?: string
     feedback: SettingsFeedback | null
     geminiApiKey: string
     geminiModelId: string
@@ -48,6 +49,7 @@ const fieldClassName =
     'w-full rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] px-4 py-3.5 text-sm text-[var(--text-primary)] outline-none transition-shadow placeholder:text-[var(--placeholder)] focus:border-[var(--surface-stroke-strong)] focus:shadow-[0_0_0_4px_var(--focus-ring)]'
 
 export default function SettingsView({
+    backLabel = 'Voltar',
     feedback,
     geminiApiKey,
     geminiModelId,
@@ -81,7 +83,7 @@ export default function SettingsView({
                     variant="ghost"
                 >
                     <ChevronLeft className="h-4 w-4" />
-                    Voltar
+                    {backLabel}
                 </Button>
 
                 <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--text-tertiary)]">

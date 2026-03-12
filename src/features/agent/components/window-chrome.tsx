@@ -6,7 +6,11 @@ import {
     startCurrentWindowDrag
 } from '@/features/agent/services/window-controls'
 
-export default function WindowChrome() {
+export default function WindowChrome({
+    title = 'SpeedAI Desktop Agent'
+}: {
+    title?: string
+}) {
     function handleDragMouseDown(event: MouseEvent<HTMLElement>) {
         if (event.button !== 0) {
             return
@@ -55,7 +59,7 @@ export default function WindowChrome() {
                 className="flex min-w-0 flex-1 cursor-grab items-center justify-center rounded-full border border-[var(--surface-stroke)] bg-[var(--chrome-pill)] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.22em] text-[var(--text-tertiary)] active:cursor-grabbing"
                 onMouseDown={handleDragMouseDown}
             >
-                <span className="truncate">SpeedAI Desktop Agent</span>
+                <span className="truncate">{title}</span>
             </div>
         </header>
     )

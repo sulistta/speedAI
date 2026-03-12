@@ -1,5 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { startTransition, useEffect, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
+import { isTauri } from '@tauri-apps/api/core'
 import {
     DEFAULT_GEMINI_MODEL_ID,
     DEFAULT_LLM_PROVIDER,
@@ -20,6 +22,13 @@ import {
     loadLLMSettings,
     saveLLMSettings
 } from '@/features/agent/services/settings-store'
+import {
+    SETTINGS_UPDATED_EVENT,
+    isSettingsWindowContext,
+    notifySettingsUpdated,
+    openSettingsWindow
+} from '@/features/agent/services/settings-window'
+import { closeCurrentWindow } from '@/features/agent/services/window-controls'
 import type {
     AgentExecutionStatus,
     AgentLLMSettings,
@@ -29,6 +38,7 @@ import type {
     SettingsFeedback
 } from '@/features/agent/types'
 import { createStatusEntry, getErrorMessage } from '@/features/agent/utils'
+import { cn } from '@/lib/utils'
 
 const panelTransition = {
     duration: 0.24,
@@ -70,7 +80,10 @@ function buildInitialStatus(settings: AgentLLMSettings): AgentStatusEntry {
 }
 
 export default function AgentShell() {
-    const [activeView, setActiveView] = useState<AgentView>('main')
+    const isSettingsWindow = isSettingsWindowContext()
+    const [activeView, setActiveView] = useState<AgentView>(
+        isSettingsWindow ? 'settings' : 'main'
+    )
     const [command, setCommand] = useState('')
     const [settings, setSettings] = useState<AgentLLMSettings>(DEFAULT_SETTINGS)
     const [settingsDraft, setSettingsDraft] =
@@ -89,6 +102,7 @@ export default function AgentShell() {
     const activeModelLabel = getActiveModelLabel(settings)
     const isConfigured = isProviderConfigured(settings)
     const configurationLabel = getConfigurationLabel(settings)
+    const renderedView: AgentView = isSettingsWindow ? 'settings' : activeView
 
     useEffect(() => {
         let isMounted = true
@@ -136,6 +150,29 @@ export default function AgentShell() {
         }
     }, [])
 
+    useEffect(() => {
+        if (isSettingsWindow || !isTauri()) {
+            return
+        }
+
+        let unlisten: (() => void) | null = null
+
+        void listen<AgentLLMSettings>(SETTINGS_UPDATED_EVENT, ({ payload }) => {
+            setSettings(payload)
+            setSettingsDraft(payload)
+
+            if (!isSubmitting) {
+                setActiveStatus(buildInitialStatus(payload))
+            }
+        }).then((removeListener) => {
+            unlisten = removeListener
+        })
+
+        return () => {
+            unlisten?.()
+        }
+    }, [isSettingsWindow, isSubmitting])
+
     function pushStatus(nextEntry: AgentStatusEntry) {
         setActiveStatus(nextEntry)
     }
@@ -151,13 +188,26 @@ export default function AgentShell() {
         )
     }
 
-    function openSettings() {
+    async function openSettings() {
+        if (isSettingsWindow) {
+            return
+        }
+
+        if (await openSettingsWindow()) {
+            return
+        }
+
         setSettingsFeedback(null)
         setSettingsDraft(settings)
         startTransition(() => setActiveView('settings'))
     }
 
     function closeSettings() {
+        if (isSettingsWindow && isTauri()) {
+            void closeCurrentWindow()
+            return
+        }
+
         startTransition(() => setActiveView('main'))
     }
 
@@ -193,6 +243,7 @@ export default function AgentShell() {
             })
 
             pushStatus(buildInitialStatus(savedSettings))
+            await notifySettingsUpdated(savedSettings)
         } catch (error) {
             setSettingsFeedback({
                 tone: 'error',
@@ -227,7 +278,7 @@ export default function AgentShell() {
                     request: trimmedCommand
                 })
             )
-            openSettings()
+            void openSettings()
             return
         }
 
@@ -260,7 +311,9 @@ export default function AgentShell() {
             )
 
             setCommand('')
-            closeSettings()
+            if (!isSettingsWindow) {
+                closeSettings()
+            }
         } catch (error) {
             pushStatus(
                 createStatusEntry({
@@ -278,8 +331,21 @@ export default function AgentShell() {
 
     return (
         <main className="min-h-screen overflow-hidden px-3 py-3 text-[var(--text-primary)] sm:px-5 sm:py-5">
-            <section className="relative mx-auto flex h-[calc(100vh-1.5rem)] w-full max-w-[940px] flex-col sm:h-[calc(100vh-2.5rem)]">
-                <WindowChrome />
+            <section
+                className={cn(
+                    'relative mx-auto flex h-[calc(100vh-1.5rem)] w-full flex-col sm:h-[calc(100vh-2.5rem)]',
+                    isSettingsWindow
+                        ? 'max-w-[960px] overflow-hidden rounded-[2rem] border border-[var(--surface-stroke)] bg-[var(--window-surface)] shadow-[var(--window-shadow)] backdrop-blur-[28px]'
+                        : 'max-w-[940px]'
+                )}
+            >
+                <WindowChrome
+                    title={
+                        isSettingsWindow
+                            ? 'SpeedAI Settings'
+                            : 'SpeedAI Desktop Agent'
+                    }
+                />
 
                 <div className="min-h-0 flex-1 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
                     <AnimatePresence mode="wait">
@@ -292,10 +358,10 @@ export default function AgentShell() {
                                 y: 18,
                                 filter: 'blur(12px)'
                             }}
-                            key={activeView}
+                            key={renderedView}
                             transition={panelTransition}
                         >
-                            {activeView === 'main' ? (
+                            {renderedView === 'main' ? (
                                 <MainView
                                     command={command}
                                     configurationLabel={configurationLabel}
@@ -305,13 +371,16 @@ export default function AgentShell() {
                                     isSubmitting={isSubmitting}
                                     modelLabel={activeModelLabel}
                                     onCommandChange={setCommand}
-                                    onOpenSettings={openSettings}
+                                    onOpenSettings={() => void openSettings()}
                                     onSubmit={() => void handleSubmitCommand()}
                                     providerLabel={activeProviderLabel}
                                     statusEntry={activeStatus}
                                 />
                             ) : (
                                 <SettingsView
+                                    backLabel={
+                                        isSettingsWindow ? 'Fechar' : 'Voltar'
+                                    }
                                     feedback={settingsFeedback}
                                     geminiApiKey={settingsDraft.geminiApiKey}
                                     geminiModelId={settingsDraft.geminiModelId}
