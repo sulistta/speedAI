@@ -1,5 +1,17 @@
 import { MAX_STATUS_ENTRIES } from '@/features/agent/constants'
-import type { AgentStatusEntry, AgentStatusTone } from '@/features/agent/types'
+import type {
+    AgentResultSummary,
+    AgentResultTone,
+    AgentStatusEntry,
+    AgentStatusTone
+} from '@/features/agent/types'
+
+function generateEntryId() {
+    return typeof crypto !== 'undefined' &&
+        typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
 
 export function createStatusEntry({
     detail,
@@ -14,10 +26,7 @@ export function createStatusEntry({
     tone: AgentStatusTone
     toolName?: string
 }): AgentStatusEntry {
-    const statusId =
-        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const statusId = generateEntryId()
 
     return {
         id: statusId,
@@ -27,6 +36,36 @@ export function createStatusEntry({
         detail,
         request,
         toolName
+    }
+}
+
+export function createResultSummary({
+    detail,
+    entries,
+    modelLabel,
+    providerLabel,
+    request,
+    title,
+    tone
+}: {
+    detail: string
+    entries: AgentStatusEntry[]
+    modelLabel: string
+    providerLabel: string
+    request: string
+    title: string
+    tone: AgentResultTone
+}): AgentResultSummary {
+    return {
+        id: generateEntryId(),
+        timestamp: new Date().toISOString(),
+        tone,
+        title,
+        detail,
+        request,
+        providerLabel,
+        modelLabel,
+        entries: [...entries]
     }
 }
 

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { startTransition, useEffect, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { isTauri } from '@tauri-apps/api/core'
 import {
@@ -9,6 +9,7 @@ import {
     DEFAULT_MODAL_THINKING_ENABLED
 } from '@/features/agent/constants'
 import MainView from '@/features/agent/components/main-view'
+import ResultView from '@/features/agent/components/result-view'
 import SettingsView from '@/features/agent/components/settings-view'
 import WindowChrome from '@/features/agent/components/window-chrome'
 import { resetBrowserAgentSession } from '@/features/agent/services/desktop-actions'
@@ -28,16 +29,30 @@ import {
     notifySettingsUpdated,
     openSettingsWindow
 } from '@/features/agent/services/settings-window'
-import { closeCurrentWindow } from '@/features/agent/services/window-controls'
+import {
+    RESULT_UPDATED_EVENT,
+    isResultWindowContext,
+    loadLatestResultSummary,
+    presentResultWindow
+} from '@/features/agent/services/result-window'
+import {
+    closeCurrentWindow,
+    focusMainWindow
+} from '@/features/agent/services/window-controls'
 import type {
     AgentExecutionStatus,
     AgentLLMSettings,
+    AgentResultSummary,
     AgentStatusEntry,
     AgentView,
     LLMProvider,
     SettingsFeedback
 } from '@/features/agent/types'
-import { createStatusEntry, getErrorMessage } from '@/features/agent/utils'
+import {
+    createResultSummary,
+    createStatusEntry,
+    getErrorMessage
+} from '@/features/agent/utils'
 import { cn } from '@/lib/utils'
 
 const panelTransition = {
@@ -81,6 +96,7 @@ function buildInitialStatus(settings: AgentLLMSettings): AgentStatusEntry {
 
 export default function AgentShell() {
     const isSettingsWindow = isSettingsWindowContext()
+    const isResultWindow = isResultWindowContext()
     const [activeView, setActiveView] = useState<AgentView>(
         isSettingsWindow ? 'settings' : 'main'
     )
@@ -94,17 +110,30 @@ export default function AgentShell() {
     const [currentRequest, setCurrentRequest] = useState('')
     const [settingsFeedback, setSettingsFeedback] =
         useState<SettingsFeedback | null>(null)
+    const [resultSummary, setResultSummary] =
+        useState<AgentResultSummary | null>(null)
     const [isBootstrapping, setIsBootstrapping] = useState(true)
     const [isSavingSettings, setIsSavingSettings] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const executionEntriesRef = useRef<AgentStatusEntry[]>([])
 
     const activeProviderLabel = getActiveProviderLabel(settings)
     const activeModelLabel = getActiveModelLabel(settings)
     const isConfigured = isProviderConfigured(settings)
     const configurationLabel = getConfigurationLabel(settings)
-    const renderedView: AgentView = isSettingsWindow ? 'settings' : activeView
+    const isDetachedWindow = isSettingsWindow || isResultWindow
+    const renderedView: AgentView = isSettingsWindow
+        ? 'settings'
+        : isResultWindow
+          ? 'result'
+          : activeView
 
     useEffect(() => {
+        if (isResultWindow) {
+            setIsBootstrapping(false)
+            return
+        }
+
         let isMounted = true
 
         async function bootstrap() {
@@ -142,16 +171,44 @@ export default function AgentShell() {
         return () => {
             isMounted = false
         }
-    }, [])
+    }, [isResultWindow])
 
     useEffect(() => {
+        if (isResultWindow) {
+            return
+        }
+
         return () => {
             void resetBrowserAgentSession()
         }
-    }, [])
+    }, [isResultWindow])
 
     useEffect(() => {
-        if (isSettingsWindow || !isTauri()) {
+        if (!isResultWindow) {
+            return
+        }
+
+        setResultSummary(loadLatestResultSummary())
+
+        if (!isTauri()) {
+            return
+        }
+
+        let unlisten: (() => void) | null = null
+
+        void listen<AgentResultSummary>(RESULT_UPDATED_EVENT, ({ payload }) => {
+            setResultSummary(payload)
+        }).then((removeListener) => {
+            unlisten = removeListener
+        })
+
+        return () => {
+            unlisten?.()
+        }
+    }, [isResultWindow])
+
+    useEffect(() => {
+        if (isSettingsWindow || isResultWindow || !isTauri()) {
             return
         }
 
@@ -171,14 +228,22 @@ export default function AgentShell() {
         return () => {
             unlisten?.()
         }
-    }, [isSettingsWindow, isSubmitting])
+    }, [isResultWindow, isSettingsWindow, isSubmitting])
 
     function pushStatus(nextEntry: AgentStatusEntry) {
         setActiveStatus(nextEntry)
     }
 
+    function recordExecutionEntry(nextEntry: AgentStatusEntry) {
+        executionEntriesRef.current = [
+            ...executionEntriesRef.current,
+            nextEntry
+        ]
+        pushStatus(nextEntry)
+    }
+
     function pushRuntimeStatus(status: AgentExecutionStatus) {
-        pushStatus(
+        recordExecutionEntry(
             createStatusEntry({
                 tone: status.tone,
                 title: status.title,
@@ -284,15 +349,16 @@ export default function AgentShell() {
 
         setIsSubmitting(true)
         setCurrentRequest(trimmedCommand)
+        executionEntriesRef.current = []
 
-        pushStatus(
-            createStatusEntry({
-                tone: 'thinking',
-                title: 'Pensando',
-                detail: `Planejando a navegacao com ${activeProviderLabel} (${activeModelLabel}).`,
-                request: trimmedCommand
-            })
-        )
+        const thinkingEntry = createStatusEntry({
+            tone: 'thinking',
+            title: 'Pensando',
+            detail: `Planejando a navegacao com ${activeProviderLabel} (${activeModelLabel}).`,
+            request: trimmedCommand
+        })
+
+        recordExecutionEntry(thinkingEntry)
 
         try {
             const result = await runAgentCommand(
@@ -301,51 +367,114 @@ export default function AgentShell() {
                 pushRuntimeStatus
             )
 
-            pushStatus(
-                createStatusEntry({
-                    tone: 'success',
-                    title: 'Tarefa concluida',
-                    detail: result.message,
-                    request: trimmedCommand
-                })
-            )
+            const completedSummary = createResultSummary({
+                tone: 'success',
+                title: 'Tarefa concluida',
+                detail: result.message,
+                request: trimmedCommand,
+                providerLabel: activeProviderLabel,
+                modelLabel: activeModelLabel,
+                entries: [
+                    ...executionEntriesRef.current,
+                    createStatusEntry({
+                        tone: 'success',
+                        title: 'Tarefa concluida',
+                        detail: result.message,
+                        request: trimmedCommand
+                    })
+                ]
+            })
+            const finalCompletedEntry =
+                completedSummary.entries[completedSummary.entries.length - 1]
+
+            pushStatus(finalCompletedEntry ?? thinkingEntry)
+            setResultSummary(completedSummary)
+            const openedResultWindow =
+                await presentResultWindow(completedSummary)
+
+            if (!openedResultWindow) {
+                startTransition(() => setActiveView('result'))
+            }
 
             setCommand('')
-            if (!isSettingsWindow) {
-                closeSettings()
-            }
         } catch (error) {
-            pushStatus(
-                createStatusEntry({
-                    tone: 'error',
-                    title: 'Falha na execucao',
-                    detail: getErrorMessage(error),
-                    request: trimmedCommand
-                })
-            )
+            const failedSummary = createResultSummary({
+                tone: 'error',
+                title: 'Falha na execucao',
+                detail: getErrorMessage(error),
+                request: trimmedCommand,
+                providerLabel: activeProviderLabel,
+                modelLabel: activeModelLabel,
+                entries: [
+                    ...executionEntriesRef.current,
+                    createStatusEntry({
+                        tone: 'error',
+                        title: 'Falha na execucao',
+                        detail: getErrorMessage(error),
+                        request: trimmedCommand
+                    })
+                ]
+            })
+            const finalFailedEntry =
+                failedSummary.entries[failedSummary.entries.length - 1]
+
+            pushStatus(finalFailedEntry ?? thinkingEntry)
+            setResultSummary(failedSummary)
+            const openedResultWindow = await presentResultWindow(failedSummary)
+
+            if (!openedResultWindow) {
+                startTransition(() => setActiveView('result'))
+            }
         } finally {
             setIsSubmitting(false)
             setCurrentRequest('')
+            executionEntriesRef.current = []
         }
     }
+
+    async function handleStartNewTask() {
+        if (isResultWindow) {
+            try {
+                await focusMainWindow()
+            } catch (error) {
+                console.error('Failed to focus main window', error)
+            }
+
+            if (isTauri()) {
+                try {
+                    await closeCurrentWindow()
+                } catch (error) {
+                    console.error('Failed to close result window', error)
+                }
+
+                return
+            }
+
+            window.close()
+            return
+        }
+
+        startTransition(() => setActiveView('main'))
+    }
+
+    const windowTitle =
+        renderedView === 'settings'
+            ? 'SpeedAI Settings'
+            : renderedView === 'result'
+              ? 'Resumo da Tarefa'
+              : 'SpeedAI Desktop Agent'
 
     return (
         <main className="min-h-screen overflow-hidden px-3 py-3 text-[var(--text-primary)] sm:px-5 sm:py-5">
             <section
                 className={cn(
                     'relative mx-auto flex h-[calc(100vh-1.5rem)] w-full flex-col sm:h-[calc(100vh-2.5rem)]',
-                    isSettingsWindow
+                    isDetachedWindow
                         ? 'max-w-[960px] overflow-hidden rounded-[2rem] border border-[var(--surface-stroke)] bg-[var(--window-surface)] shadow-[var(--window-shadow)] backdrop-blur-[28px]'
                         : 'max-w-[940px]'
                 )}
             >
-                <WindowChrome
-                    title={
-                        isSettingsWindow
-                            ? 'SpeedAI Settings'
-                            : 'SpeedAI Desktop Agent'
-                    }
-                />
+                <WindowChrome title={windowTitle} />
 
                 <div className="min-h-0 flex-1 px-3 pb-3 pt-1 sm:px-4 sm:pb-4">
                     <AnimatePresence mode="wait">
@@ -375,6 +504,11 @@ export default function AgentShell() {
                                     onSubmit={() => void handleSubmitCommand()}
                                     providerLabel={activeProviderLabel}
                                     statusEntry={activeStatus}
+                                />
+                            ) : renderedView === 'result' ? (
+                                <ResultView
+                                    onNewTask={() => void handleStartNewTask()}
+                                    summary={resultSummary}
                                 />
                             ) : (
                                 <SettingsView

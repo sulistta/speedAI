@@ -4,7 +4,8 @@
   "local": true,
   "windows": [
     "main",
-    "settings"
+    "settings",
+    "result"
   ],
   "permissions": [
     "core:default",

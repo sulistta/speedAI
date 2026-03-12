@@ -1,4 +1,4 @@
-export type AgentView = 'main' | 'settings'
+export type AgentView = 'main' | 'settings' | 'result'
 
 export type AgentStatusTone =
     | 'idle'
@@ -7,6 +7,8 @@ export type AgentStatusTone =
     | 'success'
     | 'error'
     | 'info'
+
+export type AgentResultTone = Extract<AgentStatusTone, 'success' | 'error'>
 
 export type LLMProvider = 'gemini' | 'modal'
 
@@ -165,6 +167,18 @@ export interface AgentStatusEntry {
     detail: string
     request?: string
     toolName?: string
+}
+
+export interface AgentResultSummary {
+    id: string
+    timestamp: string
+    tone: AgentResultTone
+    title: string
+    detail: string
+    request: string
+    providerLabel: string
+    modelLabel: string
+    entries: AgentStatusEntry[]
 }
 
 export interface SettingsFeedback {

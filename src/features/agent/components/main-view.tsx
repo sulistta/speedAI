@@ -51,9 +51,17 @@ export default function MainView({
 }: MainViewProps) {
     const isBusy = isBootstrapping || isSubmitting
     const showExecutionSurface = isBusy
-    const helperCopy = statusEntry
-        ? `${statusEntry.title}. ${statusEntry.detail}`
-        : 'Enter envia. Shift+Enter quebra linha.'
+    const shouldHideStatusHelper =
+        isBusy ||
+        statusEntry?.title === 'Tarefa concluida' ||
+        statusEntry?.title === 'Falha na execucao'
+    const helperCopy = shouldHideStatusHelper
+        ? null
+        : (statusEntry?.detail ?? 'Enter envia. Shift+Enter quebra linha.')
+    const helperTone =
+        helperCopy && statusEntry
+            ? statusTextToneStyles[statusEntry.tone]
+            : null
 
     function handleTextareaKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
         if (event.key === 'Enter' && !event.shiftKey) {
@@ -167,16 +175,18 @@ export default function MainView({
                 </AnimatePresence>
 
                 <div className="flex flex-col gap-1 px-1.5 sm:flex-row sm:items-center sm:justify-between">
-                    <p
-                        className={cn(
-                            'text-xs leading-5',
-                            statusEntry
-                                ? statusTextToneStyles[statusEntry.tone]
-                                : statusTextToneStyles.idle
-                        )}
-                    >
-                        {helperCopy}
-                    </p>
+                    {helperCopy ? (
+                        <p
+                            className={cn(
+                                'text-xs leading-5',
+                                helperTone ?? statusTextToneStyles.idle
+                            )}
+                        >
+                            {helperCopy}
+                        </p>
+                    ) : (
+                        <div />
+                    )}
 
                     <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
                         {providerLabel} · {modelLabel} · {configurationLabel}
