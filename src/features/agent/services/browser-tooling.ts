@@ -39,6 +39,7 @@ Rules:
 - Never invent target IDs, URLs, or page state.
 - If no relevant page is open yet, navigate first.
 - Prefer the smallest action that moves the task forward.
+- If a relevant visible result, card, title, or media item already appears in the latest snapshot, click it instead of scrolling again.
 - After each tool result, re-evaluate the latest snapshot before deciding again.
 - If the task is complete, answer in plain text with a concise result.
 - If a site blocks progress with login, captcha, 2FA, or missing permissions, explain clearly what the user must do next.

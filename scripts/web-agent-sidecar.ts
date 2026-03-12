@@ -96,7 +96,7 @@ interface BrowserAgentResponse {
 
 const MAX_HEADINGS = 6
 const MAX_REGIONS = 6
-const MAX_ELEMENTS = 24
+const MAX_ELEMENTS = 32
 const MAX_REGION_TEXT_LENGTH = 180
 const MAX_ELEMENT_TEXT_LENGTH = 120
 
@@ -346,6 +346,12 @@ async function captureSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                     return truncate(ariaLabel, limit)
                 }
 
+                const titleAttribute = element.getAttribute('title')
+
+                if (titleAttribute) {
+                    return truncate(titleAttribute, limit)
+                }
+
                 if (
                     element instanceof HTMLInputElement ||
                     element instanceof HTMLTextAreaElement ||
@@ -366,6 +372,160 @@ async function captureSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                 }
 
                 return ''
+            }
+            const getElementHref = (element: Element) =>
+                element instanceof HTMLAnchorElement
+                    ? element.href
+                    : (element.getAttribute('href') ?? '')
+            const getElementPlaceholder = (element: Element) =>
+                element instanceof HTMLInputElement ||
+                element instanceof HTMLTextAreaElement
+                    ? element.placeholder || ''
+                    : (element.getAttribute('placeholder') ?? '')
+            const isInputLikeElement = (element: Element) =>
+                element instanceof HTMLInputElement ||
+                element instanceof HTMLTextAreaElement ||
+                element instanceof HTMLSelectElement ||
+                element.getAttribute('role') === 'textbox' ||
+                element.getAttribute('role') === 'searchbox' ||
+                element.getAttribute('role') === 'combobox' ||
+                element.getAttribute('contenteditable') === 'true'
+            const hasContentContainer = (element: Element) =>
+                Boolean(
+                    element.closest(
+                        [
+                            'article',
+                            '[role="article"]',
+                            'li',
+                            'main',
+                            'section',
+                            'ytd-video-renderer',
+                            'ytd-rich-item-renderer',
+                            'ytd-rich-grid-media',
+                            'ytd-compact-video-renderer',
+                            'yt-lockup-view-model',
+                            '[class*="card"]',
+                            '[class*="result"]',
+                            '[class*="tile"]'
+                        ].join(',')
+                    )
+                )
+            const buildDedupeKey = (
+                element: Element,
+                href: string,
+                text: string,
+                label: string,
+                placeholder: string
+            ) => {
+                if (href.length > 0) {
+                    return `href:${href}`
+                }
+
+                const descriptor = text || label || placeholder
+
+                if (descriptor.length > 0) {
+                    return [
+                        element.tagName.toLowerCase(),
+                        element.getAttribute('role') ?? '',
+                        descriptor
+                    ].join('|')
+                }
+
+                const rect = element.getBoundingClientRect()
+
+                return `position:${rect.top}:${rect.left}:${element.tagName.toLowerCase()}`
+            }
+            const computeSelectionScore = (
+                element: Element,
+                text: string,
+                label: string,
+                placeholder: string,
+                href: string
+            ) => {
+                if (!(element instanceof HTMLElement)) {
+                    return Number.NEGATIVE_INFINITY
+                }
+
+                const rect = element.getBoundingClientRect()
+                const role = element.getAttribute('role') ?? ''
+                const descriptorLength = Math.max(
+                    text.length,
+                    label.length,
+                    placeholder.length
+                )
+                const isInputLike = isInputLikeElement(element)
+                const isLinkLike =
+                    element instanceof HTMLAnchorElement || role === 'link'
+                const isTinyControl = rect.width <= 72 && rect.height <= 72
+                const isMediaCandidate =
+                    href.includes('/watch') ||
+                    href.includes('/playlist') ||
+                    href.includes('/shorts/') ||
+                    href.includes('/results?search_query=')
+
+                let score = 0
+
+                if (isInputLike) {
+                    score += 460
+                }
+
+                if (isLinkLike) {
+                    score += 180
+                }
+
+                if (hasContentContainer(element)) {
+                    score += 200
+                }
+
+                if (href.length > 0) {
+                    score += 140
+                }
+
+                if (isMediaCandidate) {
+                    score += 260
+                }
+
+                score += Math.min(descriptorLength, 120)
+
+                if (text.length > 0) {
+                    score += 80
+                }
+
+                if (label.length > 0) {
+                    score += 40
+                }
+
+                if (placeholder.length > 0) {
+                    score += 60
+                }
+
+                if (rect.top >= 0) {
+                    score += Math.max(0, 220 - Math.min(rect.top, 220))
+                } else {
+                    score -= 120
+                }
+
+                if (rect.height * rect.width >= 24_000) {
+                    score += 40
+                }
+
+                if (isTinyControl) {
+                    score -= 140
+                }
+
+                if (
+                    descriptorLength === 0 &&
+                    href.length === 0 &&
+                    !isInputLike
+                ) {
+                    score -= 240
+                }
+
+                if (element.getAttribute('aria-hidden') === 'true') {
+                    score -= 40
+                }
+
+                return score
             }
 
             for (const element of document.querySelectorAll(
@@ -418,27 +578,17 @@ async function captureSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                 document.querySelectorAll(interactiveSelector)
             )
                 .filter(isElementVisible)
-                .slice(0, maxElements)
-                .map((element, index) => {
-                    const targetId = `t${index + 1}`
-                    element.setAttribute('data-speedai-target-id', targetId)
-
+                .map((element) => {
+                    const rect = element.getBoundingClientRect()
                     const text = getElementText(element, maxElementTextLength)
                     const label = getElementLabel(element, 80)
+                    const href = getElementHref(element)
+                    const placeholder = getElementPlaceholder(element)
                     const role = element.getAttribute('role') ?? undefined
-                    const href =
-                        element instanceof HTMLAnchorElement
-                            ? element.href
-                            : (element.getAttribute('href') ?? undefined)
                     const type =
                         element instanceof HTMLInputElement
                             ? element.type
                             : (element.getAttribute('type') ?? undefined)
-                    const placeholder =
-                        element instanceof HTMLInputElement ||
-                        element instanceof HTMLTextAreaElement
-                            ? element.placeholder || undefined
-                            : (element.getAttribute('placeholder') ?? undefined)
                     const disabled =
                         ((element instanceof HTMLButtonElement ||
                             element instanceof HTMLInputElement ||
@@ -449,15 +599,115 @@ async function captureSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                         element.getAttribute('aria-disabled') === 'true'
 
                     return {
-                        targetId,
+                        element,
+                        rectTop: rect.top,
+                        rectLeft: rect.left,
+                        dedupeKey: buildDedupeKey(
+                            element,
+                            href,
+                            text,
+                            label,
+                            placeholder
+                        ),
+                        score: computeSelectionScore(
+                            element,
+                            text,
+                            label,
+                            placeholder,
+                            href
+                        ),
+                        descriptorLength: Math.max(
+                            text.length,
+                            label.length,
+                            placeholder.length
+                        ),
                         tag: element.tagName.toLowerCase(),
                         role,
                         type,
                         text,
                         label,
-                        placeholder,
-                        href,
+                        placeholder: placeholder || undefined,
+                        href: href || undefined,
                         disabled
+                    }
+                })
+                .reduce<
+                    Array<{
+                        element: Element
+                        rectTop: number
+                        rectLeft: number
+                        dedupeKey: string
+                        score: number
+                        descriptorLength: number
+                        tag: string
+                        role?: string
+                        type?: string
+                        text: string
+                        label: string
+                        placeholder?: string
+                        href?: string
+                        disabled: boolean
+                    }>
+                >((selected, candidate) => {
+                    const existingIndex = selected.findIndex(
+                        (existingCandidate) =>
+                            existingCandidate.dedupeKey === candidate.dedupeKey
+                    )
+
+                    if (existingIndex === -1) {
+                        selected.push(candidate)
+                        return selected
+                    }
+
+                    const existingCandidate = selected[existingIndex]
+                    const shouldReplace =
+                        candidate.score > existingCandidate.score ||
+                        (candidate.score === existingCandidate.score &&
+                            candidate.descriptorLength >
+                                existingCandidate.descriptorLength)
+
+                    if (shouldReplace) {
+                        selected.splice(existingIndex, 1, candidate)
+                    }
+
+                    return selected
+                }, [])
+                .sort((left, right) => {
+                    if (right.score !== left.score) {
+                        return right.score - left.score
+                    }
+
+                    if (left.rectTop !== right.rectTop) {
+                        return left.rectTop - right.rectTop
+                    }
+
+                    return left.rectLeft - right.rectLeft
+                })
+                .slice(0, maxElements)
+                .sort((left, right) => {
+                    if (left.rectTop !== right.rectTop) {
+                        return left.rectTop - right.rectTop
+                    }
+
+                    return left.rectLeft - right.rectLeft
+                })
+                .map((candidate, index) => {
+                    const targetId = `t${index + 1}`
+                    candidate.element.setAttribute(
+                        'data-speedai-target-id',
+                        targetId
+                    )
+
+                    return {
+                        targetId,
+                        tag: candidate.tag,
+                        role: candidate.role,
+                        type: candidate.type,
+                        text: candidate.text,
+                        label: candidate.label,
+                        placeholder: candidate.placeholder,
+                        href: candidate.href,
+                        disabled: candidate.disabled
                     }
                 })
 
