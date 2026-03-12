@@ -6,20 +6,25 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     fs,
-    io::{BufRead, BufReader, Write},
     path::PathBuf,
-    process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio},
     sync::{Arc, Mutex},
-    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{
+    async_runtime::{block_on as block_on_task, Receiver},
+    AppHandle, Manager, State,
+};
+use tauri_plugin_shell::{
+    process::{CommandChild, CommandEvent},
+    ShellExt,
+};
 
 const SIDECAR_READY_SIGNAL: &str = "READY";
-const SIDECAR_SCRIPT_RELATIVE_PATH: &str = "scripts/web-agent-sidecar.ts";
+const SIDECAR_BINARY_NAME: &str = "web-agent-sidecar";
 const BROWSER_PROFILE_DIRECTORY: &str = "browser-profile";
-const MODAL_CHAT_COMPLETIONS_URL: &str =
-    "https://api.us-west-2.modal.direct/v1/chat/completions";
+const BROWSER_RESOURCES_DIRECTORY: &str = "web-agent-browser";
+const BROWSER_MANIFEST_FILE: &str = "web-agent-browser-manifest.json";
+const MODAL_CHAT_COMPLETIONS_URL: &str = "https://api.us-west-2.modal.direct/v1/chat/completions";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +103,13 @@ struct BrowserAgentResponseEnvelope {
     ok: bool,
     result: Option<BrowserAgentActionResult>,
     error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserBundleManifest {
+    bundle_directory: String,
+    executable_relative_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,23 +203,12 @@ struct BrowserAgentRuntime {
 }
 
 struct BrowserAgentSidecar {
-    child: Child,
-    stdin: ChildStdin,
-    stdout: BufReader<ChildStdout>,
+    child: CommandChild,
+    receiver: Receiver<CommandEvent>,
 }
 
 impl BrowserAgentSidecar {
     fn spawn(app: &AppHandle) -> Result<Self, String> {
-        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
-        let script_path = repo_root.join(SIDECAR_SCRIPT_RELATIVE_PATH);
-
-        if !script_path.exists() {
-            return Err(format!(
-                "Nao encontrei o sidecar de navegacao em {}.",
-                script_path.display()
-            ));
-        }
-
         let profile_dir = app
             .path()
             .app_data_dir()
@@ -223,72 +224,56 @@ impl BrowserAgentSidecar {
             )
         })?;
 
-        let mut child = Command::new("bun")
-            .arg(&script_path)
-            .current_dir(&repo_root)
+        let browser_executable_path = resolve_browser_executable_path(app)?;
+
+        let (mut receiver, child) = app
+            .shell()
+            .sidecar(SIDECAR_BINARY_NAME)
+            .map_err(|error| format!("Falha ao preparar o sidecar web empacotado: {error}"))?
             .env("SPEEDAI_BROWSER_PROFILE_DIR", &profile_dir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .env("SPEEDAI_BROWSER_EXECUTABLE_PATH", &browser_executable_path)
             .spawn()
-            .map_err(|error| {
-                format!(
-                    "Falha ao iniciar o sidecar web com Bun: {error}. Verifique se o Bun esta instalado e se o app esta sendo executado a partir do repositorio."
-                )
-            })?;
+            .map_err(|error| format!("Falha ao iniciar o sidecar web empacotado: {error}"))?;
 
-        let stdin = child.stdin.take().ok_or_else(|| {
-            "O sidecar web iniciou sem stdin disponivel para comandos.".to_string()
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            "O sidecar web iniciou sem stdout disponivel para respostas.".to_string()
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            "O sidecar web iniciou sem stderr disponivel para diagnostico.".to_string()
-        })?;
+        Self::wait_until_ready(&mut receiver)?;
 
-        Self::spawn_stderr_logger(stderr);
-
-        let mut stdout_reader = BufReader::new(stdout);
-        let mut ready_line = String::new();
-
-        let bytes_read = stdout_reader
-            .read_line(&mut ready_line)
-            .map_err(|error| format!("Falha ao aguardar o bootstrap do sidecar web: {error}"))?;
-
-        if bytes_read == 0 || ready_line.trim() != SIDECAR_READY_SIGNAL {
-            let _ = child.kill();
-
-            return Err(format!(
-                "O sidecar web nao confirmou inicializacao correta. Saida recebida: {}",
-                ready_line.trim()
-            ));
-        }
-
-        Ok(Self {
-            child,
-            stdin,
-            stdout: stdout_reader,
-        })
+        Ok(Self { child, receiver })
     }
 
-    fn spawn_stderr_logger(stderr: ChildStderr) {
-        thread::spawn(move || {
-            let reader = BufReader::new(stderr);
+    fn wait_until_ready(receiver: &mut Receiver<CommandEvent>) -> Result<(), String> {
+        loop {
+            match read_sidecar_event(receiver, "a inicializacao do sidecar web")? {
+                CommandEvent::Stdout(line) => {
+                    let content = String::from_utf8_lossy(&line);
+                    let trimmed = content.trim();
 
-            for line in reader.lines() {
-                match line {
-                    Ok(content) if !content.trim().is_empty() => {
-                        eprintln!("[web-sidecar] {content}");
+                    if trimmed.is_empty() {
+                        continue;
                     }
-                    Ok(_) => {}
-                    Err(error) => {
-                        eprintln!("[web-sidecar] failed to read stderr: {error}");
-                        break;
+
+                    if trimmed == SIDECAR_READY_SIGNAL {
+                        return Ok(());
                     }
+
+                    return Err(format!(
+                        "O sidecar web nao confirmou inicializacao correta. Saida recebida: {trimmed}"
+                    ));
                 }
+                CommandEvent::Stderr(line) => log_sidecar_stderr(&line),
+                CommandEvent::Error(error) => {
+                    return Err(format!(
+                        "O sidecar web reportou um erro durante a inicializacao: {error}"
+                    ));
+                }
+                CommandEvent::Terminated(payload) => {
+                    return Err(format!(
+                        "O sidecar web encerrou durante a inicializacao (codigo: {:?}, sinal: {:?}).",
+                        payload.code, payload.signal
+                    ));
+                }
+                _ => {}
             }
-        });
+        }
     }
 
     fn send_request(
@@ -307,48 +292,35 @@ impl BrowserAgentSidecar {
             id: request_id.clone(),
             request: request.clone(),
         };
-        let serialized_request = serde_json::to_string(&payload).map_err(|error| {
-            format!("Falha ao serializar a requisicao do sidecar web: {error}")
-        })?;
+        let serialized_request = serde_json::to_string(&payload)
+            .map_err(|error| format!("Falha ao serializar a requisicao do sidecar web: {error}"))?;
 
-        self.stdin
-            .write_all(serialized_request.as_bytes())
-            .and_then(|_| self.stdin.write_all(b"\n"))
-            .and_then(|_| self.stdin.flush())
+        let mut request_payload = serialized_request.into_bytes();
+        request_payload.push(b'\n');
+
+        self.child
+            .write(&request_payload)
             .map_err(|error| format!("Falha ao enviar a requisicao ao sidecar web: {error}"))?;
 
-        let mut response_line = String::new();
-        let bytes_read = self
-            .stdout
-            .read_line(&mut response_line)
-            .map_err(|error| format!("Falha ao ler a resposta do sidecar web: {error}"))?;
-
-        if bytes_read == 0 {
-            return Err(
-                "O sidecar web encerrou inesperadamente enquanto processava a requisicao."
-                    .to_string(),
-            );
-        }
+        let response_line = self.read_response_line()?;
 
         let response: BrowserAgentResponseEnvelope =
-            serde_json::from_str(response_line.trim()).map_err(|error| {
+            serde_json::from_str(&response_line).map_err(|error| {
                 format!(
                     "Falha ao interpretar a resposta do sidecar web: {error}. Conteudo: {}",
-                    response_line.trim()
+                    response_line
                 )
             })?;
 
         if response.id != request_id {
             return Err(
-                "O sidecar web respondeu fora de ordem e a sessao ficou inconsistente."
-                    .to_string(),
+                "O sidecar web respondeu fora de ordem e a sessao ficou inconsistente.".to_string(),
             );
         }
 
         if response.ok {
             response.result.ok_or_else(|| {
-                "O sidecar web confirmou sucesso, mas nao retornou payload utilizavel."
-                    .to_string()
+                "O sidecar web confirmou sucesso, mas nao retornou payload utilizavel.".to_string()
             })
         } else {
             Err(response.error.unwrap_or_else(|| {
@@ -357,9 +329,38 @@ impl BrowserAgentSidecar {
         }
     }
 
-    fn kill(mut self) {
+    fn read_response_line(&mut self) -> Result<String, String> {
+        loop {
+            match read_sidecar_event(&mut self.receiver, "a execucao da requisicao web")? {
+                CommandEvent::Stdout(line) => {
+                    let content = String::from_utf8_lossy(&line);
+                    let trimmed = content.trim();
+
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+
+                    return Ok(trimmed.to_string());
+                }
+                CommandEvent::Stderr(line) => log_sidecar_stderr(&line),
+                CommandEvent::Error(error) => {
+                    return Err(format!(
+                        "O sidecar web reportou um erro ao processar a requisicao: {error}"
+                    ));
+                }
+                CommandEvent::Terminated(payload) => {
+                    return Err(format!(
+                        "O sidecar web encerrou inesperadamente enquanto processava a requisicao (codigo: {:?}, sinal: {:?}).",
+                        payload.code, payload.signal
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn kill(self) {
         let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 
@@ -414,6 +415,118 @@ impl BrowserAgentRuntime {
 
         Ok(())
     }
+}
+
+fn log_sidecar_stderr(line: &[u8]) {
+    let content = String::from_utf8_lossy(line);
+    let trimmed = content.trim();
+
+    if !trimmed.is_empty() {
+        eprintln!("[web-sidecar] {trimmed}");
+    }
+}
+
+fn read_sidecar_event(
+    receiver: &mut Receiver<CommandEvent>,
+    operation: &str,
+) -> Result<CommandEvent, String> {
+    block_on_task(receiver.recv())
+        .ok_or_else(|| format!("O sidecar web encerrou inesperadamente durante {operation}."))
+}
+
+fn resolve_browser_executable_path(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Ok(configured_path) = std::env::var("SPEEDAI_BROWSER_EXECUTABLE_PATH") {
+        let trimmed_path = configured_path.trim();
+
+        if !trimmed_path.is_empty() {
+            let executable_path = PathBuf::from(trimmed_path);
+
+            if executable_path.exists() {
+                return Ok(executable_path);
+            }
+
+            return Err(format!(
+                "O executavel configurado em SPEEDAI_BROWSER_EXECUTABLE_PATH nao existe em {}.",
+                executable_path.display()
+            ));
+        }
+    }
+
+    for manifest_path in candidate_browser_manifest_paths(app) {
+        if !manifest_path.exists() {
+            continue;
+        }
+
+        let manifest_content = fs::read_to_string(&manifest_path).map_err(|error| {
+            format!(
+                "Falha ao ler o manifest do navegador empacotado em {}: {error}",
+                manifest_path.display()
+            )
+        })?;
+        let manifest: BrowserBundleManifest =
+            serde_json::from_str(&manifest_content).map_err(|error| {
+                format!(
+                    "Falha ao interpretar o manifest do navegador empacotado em {}: {error}",
+                    manifest_path.display()
+                )
+            })?;
+
+        let manifest_parent = manifest_path.parent().ok_or_else(|| {
+            format!(
+                "O manifest do navegador empacotado em {} nao possui diretorio pai.",
+                manifest_path.display()
+            )
+        })?;
+        let executable_path = manifest_parent
+            .join(BROWSER_RESOURCES_DIRECTORY)
+            .join(manifest.bundle_directory)
+            .join(portable_relative_path_to_pathbuf(
+                &manifest.executable_relative_path,
+            ));
+
+        if executable_path.exists() {
+            return Ok(executable_path);
+        }
+
+        return Err(format!(
+            "O navegador empacotado foi descrito em {}, mas o executavel nao existe em {}.",
+            manifest_path.display(),
+            executable_path.display()
+        ));
+    }
+
+    Err(
+        "Nao encontrei um navegador empacotado para a automacao web. Rode \"bun run prepare:web-agent\" antes de iniciar ou empacotar o app."
+            .to_string(),
+    )
+}
+
+fn candidate_browser_manifest_paths(app: &AppHandle) -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        paths.push(resource_dir.join(BROWSER_MANIFEST_FILE));
+    }
+
+    paths.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(BROWSER_MANIFEST_FILE),
+    );
+
+    paths
+}
+
+fn portable_relative_path_to_pathbuf(relative_path: &str) -> PathBuf {
+    let mut resolved_path = PathBuf::new();
+
+    for segment in relative_path.split('/') {
+        if !segment.is_empty() {
+            resolved_path.push(segment);
+        }
+    }
+
+    resolved_path
 }
 
 fn build_modal_client() -> Result<Client, String> {
@@ -535,6 +648,7 @@ fn main() {
     tauri::Builder::default()
         .manage(BrowserAgentRuntime::default())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             execute_browser_agent_action,

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { createInterface } from 'node:readline'
@@ -122,6 +122,38 @@ function getHeadlessMode() {
     return process.env.SPEEDAI_BROWSER_HEADLESS === '1'
 }
 
+async function resolveBrowserExecutablePath() {
+    const configuredPath = process.env.SPEEDAI_BROWSER_EXECUTABLE_PATH?.trim()
+
+    if (configuredPath) {
+        try {
+            await stat(configuredPath)
+            return configuredPath
+        } catch {
+            throw new Error(
+                `O executavel configurado em SPEEDAI_BROWSER_EXECUTABLE_PATH nao existe em ${configuredPath}.`
+            )
+        }
+    }
+
+    const executablePath = chromium.executablePath()
+
+    if (!executablePath) {
+        throw new Error(
+            'Nao encontrei um navegador pronto para a automacao web. Gere os recursos empacotados com "bun run prepare:web-agent" ou instale o Chromium do Playwright no ambiente de desenvolvimento.'
+        )
+    }
+
+    try {
+        await stat(executablePath)
+        return executablePath
+    } catch {
+        throw new Error(
+            'Nao encontrei um navegador pronto para a automacao web. Gere os recursos empacotados com "bun run prepare:web-agent" ou instale o Chromium do Playwright no ambiente de desenvolvimento.'
+        )
+    }
+}
+
 function normalizeUrl(url: string) {
     const trimmedUrl = url.trim()
 
@@ -158,13 +190,6 @@ function formatSidecarError(error: unknown) {
             ? error.message.trim()
             : 'A automacao web falhou sem detalhes adicionais.'
 
-    if (
-        baseMessage.includes('Executable does not exist') ||
-        baseMessage.includes('Please run the following command')
-    ) {
-        return `${baseMessage} Execute "bunx playwright install chromium" no diretorio do projeto e tente novamente.`
-    }
-
     return baseMessage
 }
 
@@ -182,8 +207,10 @@ async function settlePage(page: Page, delayMs = 250) {
 async function ensurePage() {
     if (context === null) {
         const profileDir = await getBrowserProfileDir()
+        const browserExecutablePath = await resolveBrowserExecutablePath()
 
         context = await chromium.launchPersistentContext(profileDir, {
+            executablePath: browserExecutablePath,
             headless: getHeadlessMode(),
             chromiumSandbox: false,
             args: ['--disable-setuid-sandbox', '--no-sandbox'],
