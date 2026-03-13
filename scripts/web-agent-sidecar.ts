@@ -300,6 +300,7 @@ const FOCUSED_FALLBACK_ELEMENT_LIMIT = 14
 const DELTA_SNAPSHOT_ELEMENT_LIMIT = 18
 const DELTA_FALLBACK_ELEMENT_LIMIT = 10
 const TARGET_ID_ATTRIBUTE = 'data-speedai-target-id'
+const OVERLAY_TARGET_ID_ATTRIBUTE = 'data-speedai-overlay-target-id'
 const ACTIVE_TARGET_MARKER_ATTRIBUTE = 'data-speedai-active-target-marker'
 const VISUAL_OVERLAY_ROOT_ID = 'speedai-visual-overlay-root'
 
@@ -605,6 +606,7 @@ async function renderSnapshotVisualOverlay(
         ({
             overlayRootId,
             targetIdAttribute,
+            overlayTargetIdAttribute,
             snapshotTargetIds,
             highlightedTargetId
         }) => {
@@ -636,21 +638,38 @@ async function renderSnapshotVisualOverlay(
             )
                 ? highlightedTargetId
                 : undefined
+            const isOverlayNode = (element: Element | null) => {
+                const overlayRoot = document.getElementById(overlayRootId)
+
+                return (
+                    element !== null &&
+                    overlayRoot instanceof HTMLElement &&
+                    overlayRoot.contains(element)
+                )
+            }
 
             function findTargetElement(targetId: string) {
-                const targetElement = document.querySelector(
+                const targetElements = document.querySelectorAll(
                     `[${targetIdAttribute}="${targetId}"]`
                 )
 
-                return targetElement instanceof HTMLElement
-                    ? targetElement
-                    : null
+                for (const targetElement of targetElements) {
+                    if (
+                        targetElement instanceof HTMLElement &&
+                        !isOverlayNode(targetElement)
+                    ) {
+                        return targetElement
+                    }
+                }
+
+                return null
             }
 
             function buildOverlayRoot() {
                 const root = document.createElement('div')
                 root.id = overlayRootId
                 root.setAttribute('aria-hidden', 'true')
+                root.dataset.speedaiOverlayRoot = 'true'
                 root.style.position = 'fixed'
                 root.style.inset = '0'
                 root.style.pointerEvents = 'none'
@@ -665,7 +684,7 @@ async function renderSnapshotVisualOverlay(
                 isActive: boolean
             ): OverlayItem {
                 const box = document.createElement('div')
-                box.dataset.speedaiTargetId = targetId
+                box.setAttribute(overlayTargetIdAttribute, targetId)
                 box.style.position = 'fixed'
                 box.style.borderRadius = isActive ? '16px' : '14px'
                 box.style.opacity = '0'
@@ -673,7 +692,7 @@ async function renderSnapshotVisualOverlay(
                     'transform 120ms ease, width 120ms ease, height 120ms ease, opacity 120ms ease'
 
                 const badge = document.createElement('div')
-                badge.dataset.speedaiTargetId = targetId
+                badge.setAttribute(overlayTargetIdAttribute, targetId)
                 badge.textContent = targetId
                 badge.style.position = 'fixed'
                 badge.style.padding = isActive ? '4px 9px' : '3px 8px'
@@ -718,7 +737,11 @@ async function renderSnapshotVisualOverlay(
 
             function hideOverlayItem(item: OverlayItem) {
                 item.box.style.opacity = '0'
+                item.box.style.width = '0px'
+                item.box.style.height = '0px'
+                item.box.style.transform = 'translate(-9999px, -9999px)'
                 item.badge.style.opacity = '0'
+                item.badge.style.transform = 'translate(-9999px, -9999px)'
             }
 
             function createState() {
@@ -766,7 +789,10 @@ async function renderSnapshotVisualOverlay(
                                 item.targetId
                             )
 
-                            if (targetElement === null) {
+                            if (
+                                targetElement === null ||
+                                isOverlayNode(targetElement)
+                            ) {
                                 hideOverlayItem(item)
                                 continue
                             }
@@ -799,6 +825,18 @@ async function renderSnapshotVisualOverlay(
                                 rect.height + outlineInset * 2,
                                 window.innerHeight - boxTop - 4
                             )
+
+                            if (
+                                !Number.isFinite(boxWidth) ||
+                                !Number.isFinite(boxHeight) ||
+                                boxWidth < 1 ||
+                                boxHeight < 1 ||
+                                boxWidth > window.innerWidth ||
+                                boxHeight > window.innerHeight
+                            ) {
+                                hideOverlayItem(item)
+                                continue
+                            }
 
                             item.box.style.opacity = '1'
                             item.box.style.transform = `translate(${boxLeft}px, ${boxTop}px)`
@@ -942,6 +980,7 @@ async function renderSnapshotVisualOverlay(
         {
             overlayRootId: VISUAL_OVERLAY_ROOT_ID,
             targetIdAttribute: TARGET_ID_ATTRIBUTE,
+            overlayTargetIdAttribute: OVERLAY_TARGET_ID_ATTRIBUTE,
             snapshotTargetIds: snapshot.elements.map(
                 (element) => element.targetId
             ),
