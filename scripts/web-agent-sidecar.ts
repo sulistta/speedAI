@@ -199,9 +199,10 @@ interface ActionContext {
 const INTERACTIVE_SELECTOR = [
     'a[href]',
     'button',
-    'input',
+    'input:not([type="hidden"])',
     'textarea',
     'select',
+    'summary',
     '[role="button"]',
     '[role="link"]',
     '[role="textbox"]',
@@ -210,8 +211,68 @@ const INTERACTIVE_SELECTOR = [
     '[role="checkbox"]',
     '[role="radio"]',
     '[role="menuitem"]',
-    '[contenteditable="true"]'
+    '[role="menuitemcheckbox"]',
+    '[role="menuitemradio"]',
+    '[role="option"]',
+    '[role="switch"]',
+    '[role="tab"]',
+    '[role="slider"]',
+    '[role="treeitem"]',
+    '[contenteditable="true"]',
+    '[onclick]',
+    '[tabindex]:not([tabindex="-1"])',
+    '[aria-controls]',
+    '[aria-haspopup]'
 ].join(',')
+
+const CONTENT_CONTAINER_SELECTOR = [
+    'article',
+    '[role="article"]',
+    'li',
+    '[role="listitem"]',
+    'main',
+    'section',
+    'nav',
+    'aside',
+    '[class*="card"]',
+    '[class*="result"]',
+    '[class*="tile"]',
+    '[class*="item"]',
+    '[data-testid*="card"]',
+    '[data-testid*="result"]',
+    '[data-testid*="item"]',
+    'ytd-video-renderer',
+    'ytd-rich-item-renderer',
+    'ytd-rich-grid-media',
+    'ytd-compact-video-renderer',
+    'yt-lockup-view-model'
+].join(',')
+
+const ACCESSIBLE_NAME_HINT_SELECTOR = [
+    '.sr-only',
+    '.visually-hidden',
+    '.screen-reader-text',
+    '[class*="sr-only"]',
+    '[class*="visually-hidden"]'
+].join(',')
+
+const ACTIONABLE_ROLES = [
+    'button',
+    'link',
+    'textbox',
+    'searchbox',
+    'combobox',
+    'checkbox',
+    'radio',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'option',
+    'switch',
+    'tab',
+    'slider',
+    'treeitem'
+]
 
 const REGION_SELECTOR = [
     'main',
@@ -228,9 +289,16 @@ const DEFAULT_WAIT_TIMEOUT_MS = 4_000
 const DEFAULT_POST_ACTION_SNAPSHOT_MODE: BrowserSnapshotMode = 'delta'
 const MAX_HEADINGS = 6
 const MAX_REGIONS = 6
-const MAX_ELEMENTS = 32
+const MAX_ELEMENTS = 72
 const MAX_REGION_TEXT_LENGTH = 180
 const MAX_ELEMENT_TEXT_LENGTH = 120
+const FULL_SNAPSHOT_ELEMENT_LIMIT = 48
+const INTERACTIVE_SNAPSHOT_ELEMENT_LIMIT = 28
+const FOCUSED_SNAPSHOT_ELEMENT_LIMIT = 28
+const FOCUSED_MATCH_ELEMENT_LIMIT = 18
+const FOCUSED_FALLBACK_ELEMENT_LIMIT = 14
+const DELTA_SNAPSHOT_ELEMENT_LIMIT = 18
+const DELTA_FALLBACK_ELEMENT_LIMIT = 10
 const TARGET_ID_ATTRIBUTE = 'data-speedai-target-id'
 const ACTIVE_TARGET_MARKER_ATTRIBUTE = 'data-speedai-active-target-marker'
 const VISUAL_OVERLAY_ROOT_ID = 'speedai-visual-overlay-root'
@@ -1005,7 +1073,7 @@ function applyFocusToSnapshot(
         .filter((item) => item.score > 0)
         .sort((left, right) => right.score - left.score)
         .map((item) => item.element)
-        .slice(0, 16)
+        .slice(0, FOCUSED_MATCH_ELEMENT_LIMIT)
 
     if (
         headings.length === 0 &&
@@ -1018,7 +1086,7 @@ function applyFocusToSnapshot(
             focusText: normalizedFocusText,
             headings: snapshot.headings.slice(0, 3),
             regions: snapshot.regions.slice(0, 3),
-            elements: snapshot.elements.slice(0, 12)
+            elements: snapshot.elements.slice(0, FOCUSED_FALLBACK_ELEMENT_LIMIT)
         }
     }
 
@@ -1065,7 +1133,7 @@ function buildDeltaSnapshot(
         .slice(0, 4)
     const elements = currentSnapshot.elements
         .filter((item) => !previousElementKeys.has(buildElementSignature(item)))
-        .slice(0, 16)
+        .slice(0, DELTA_SNAPSHOT_ELEMENT_LIMIT)
 
     if (
         headings.length === 0 &&
@@ -1076,7 +1144,10 @@ function buildDeltaSnapshot(
             ...createSnapshotView(currentSnapshot, 'delta'),
             headings: [],
             regions: [],
-            elements: currentSnapshot.elements.slice(0, 8)
+            elements: currentSnapshot.elements.slice(
+                0,
+                DELTA_FALLBACK_ELEMENT_LIMIT
+            )
         }
     }
 
@@ -1098,6 +1169,10 @@ function applySnapshotMode(
         case 'full':
             return {
                 ...createSnapshotView(rawSnapshot, mode),
+                elements: rawSnapshot.elements.slice(
+                    0,
+                    FULL_SNAPSHOT_ELEMENT_LIMIT
+                ),
                 focusText
             }
         case 'interactive':
@@ -1105,7 +1180,10 @@ function applySnapshotMode(
                 ...createSnapshotView(rawSnapshot, mode),
                 headings: [],
                 regions: [],
-                elements: rawSnapshot.elements.slice(0, 20),
+                elements: rawSnapshot.elements.slice(
+                    0,
+                    INTERACTIVE_SNAPSHOT_ELEMENT_LIMIT
+                ),
                 focusText
             }
         case 'focused':
@@ -1114,7 +1192,10 @@ function applySnapshotMode(
                     ...createSnapshotView(rawSnapshot, mode),
                     headings: rawSnapshot.headings.slice(0, 6),
                     regions: rawSnapshot.regions.slice(0, 6),
-                    elements: rawSnapshot.elements.slice(0, 20)
+                    elements: rawSnapshot.elements.slice(
+                        0,
+                        FOCUSED_SNAPSHOT_ELEMENT_LIMIT
+                    )
                 },
                 focusText,
                 mode
@@ -1133,6 +1214,9 @@ async function captureRawSnapshot(page: Page) {
         ({
             interactiveSelector,
             regionSelector,
+            contentContainerSelector,
+            accessibleNameHintSelector,
+            actionableRoles,
             targetIdAttribute,
             activeTargetMarkerAttribute,
             maxElements,
@@ -1143,6 +1227,42 @@ async function captureRawSnapshot(page: Page) {
         }) => {
             let activeTargetId: string | undefined
 
+            type CandidateKind =
+                | 'field'
+                | 'button'
+                | 'link'
+                | 'toggle'
+                | 'tab'
+                | 'option'
+                | 'menuitem'
+                | 'container'
+                | 'editable'
+                | 'other'
+
+            type CandidateSource =
+                | 'native'
+                | 'semantic'
+                | 'implicit'
+                | 'container'
+
+            type SnapshotCandidate = {
+                element: Element
+                rectTop: number
+                rectLeft: number
+                dedupeKey: string
+                score: number
+                descriptorLength: number
+                tag: string
+                role?: string
+                type?: string
+                text: string
+                label: string
+                placeholder?: string
+                href?: string
+                disabled: boolean
+                kind: CandidateKind
+            }
+
             document
                 .querySelectorAll(`[${targetIdAttribute}]`)
                 .forEach((element) => {
@@ -1151,6 +1271,8 @@ async function captureRawSnapshot(page: Page) {
 
             const normalizeWhitespace = (value: string) =>
                 value.replace(/\s+/g, ' ').trim()
+            const normalizeForCompare = (value: string) =>
+                normalizeWhitespace(value).toLowerCase()
             const truncate = (value: string, length: number) => {
                 const normalizedValue = normalizeWhitespace(value)
 
@@ -1159,6 +1281,35 @@ async function captureRawSnapshot(page: Page) {
                 }
 
                 return `${normalizedValue.slice(0, length - 1)}…`
+            }
+            const uniqueTextParts = (
+                values: Array<string | null | undefined>
+            ) => {
+                const seen = new Set<string>()
+                const parts: string[] = []
+
+                for (const value of values) {
+                    if (typeof value !== 'string') {
+                        continue
+                    }
+
+                    const normalizedValue = normalizeWhitespace(value)
+
+                    if (normalizedValue.length === 0) {
+                        continue
+                    }
+
+                    const compareKey = normalizeForCompare(normalizedValue)
+
+                    if (seen.has(compareKey)) {
+                        continue
+                    }
+
+                    seen.add(compareKey)
+                    parts.push(normalizedValue)
+                }
+
+                return parts
             }
             const isElementVisible = (element: Element) => {
                 if (!(element instanceof HTMLElement)) {
@@ -1182,6 +1333,96 @@ async function captureRawSnapshot(page: Page) {
 
                 return rect.bottom >= 0 && rect.top <= window.innerHeight * 1.5
             }
+            const escapeSelectorValue = (value: string) => {
+                if (
+                    typeof window.CSS !== 'undefined' &&
+                    typeof window.CSS.escape === 'function'
+                ) {
+                    return window.CSS.escape(value)
+                }
+
+                return value.replace(/["\\]/g, '\\$&')
+            }
+            const readIdReferenceText = (value: string | null, limit: number) =>
+                truncate(
+                    uniqueTextParts(
+                        (value ?? '')
+                            .split(/\s+/)
+                            .map((id) => id.trim())
+                            .filter((id) => id.length > 0)
+                            .map((id) => {
+                                const referencedElement =
+                                    document.getElementById(id)
+
+                                if (
+                                    !(referencedElement instanceof HTMLElement)
+                                ) {
+                                    return ''
+                                }
+
+                                return (
+                                    referencedElement.innerText ||
+                                    referencedElement.textContent ||
+                                    ''
+                                )
+                            })
+                    ).join(' · '),
+                    limit
+                )
+            const getAccessibleHintText = (element: Element, limit: number) => {
+                if (!(element instanceof HTMLElement)) {
+                    return ''
+                }
+
+                return truncate(
+                    uniqueTextParts(
+                        Array.from(
+                            element.querySelectorAll(accessibleNameHintSelector)
+                        )
+                            .slice(0, 4)
+                            .map(
+                                (hintElement) =>
+                                    hintElement.textContent ??
+                                    (hintElement instanceof HTMLElement
+                                        ? hintElement.innerText
+                                        : '')
+                            )
+                    ).join(' · '),
+                    limit
+                )
+            }
+            const getNestedImageAltText = (element: Element, limit: number) => {
+                if (!(element instanceof HTMLElement)) {
+                    return ''
+                }
+
+                return truncate(
+                    uniqueTextParts(
+                        Array.from(
+                            element.querySelectorAll<HTMLImageElement>(
+                                'img[alt]'
+                            )
+                        )
+                            .slice(0, 2)
+                            .map((imageElement) => imageElement.alt)
+                    ).join(' · '),
+                    limit
+                )
+            }
+            const getNestedSvgTitleText = (element: Element, limit: number) => {
+                if (!(element instanceof HTMLElement)) {
+                    return ''
+                }
+
+                return truncate(
+                    uniqueTextParts(
+                        Array.from(element.querySelectorAll('svg title'))
+                            .slice(0, 2)
+                            .map((titleElement) => titleElement.textContent)
+                    ).join(' · '),
+                    limit
+                )
+            }
             const getElementText = (element: Element, limit: number) => {
                 if (element instanceof HTMLInputElement) {
                     return truncate(
@@ -1204,57 +1445,133 @@ async function captureRawSnapshot(page: Page) {
                     )
                 }
 
+                if (element instanceof HTMLImageElement) {
+                    return truncate(element.alt || '', limit)
+                }
+
                 if (!(element instanceof HTMLElement)) {
                     return ''
                 }
 
                 return truncate(
-                    element.innerText || element.textContent || '',
+                    uniqueTextParts([
+                        element.innerText || element.textContent || '',
+                        getAccessibleHintText(element, limit),
+                        getNestedImageAltText(element, limit),
+                        getNestedSvgTitleText(element, limit)
+                    ]).join(' · '),
                     limit
                 )
+            }
+            const getFormControlLabel = (element: Element, limit: number) => {
+                if (
+                    !(
+                        element instanceof HTMLInputElement ||
+                        element instanceof HTMLTextAreaElement ||
+                        element instanceof HTMLSelectElement
+                    )
+                ) {
+                    return ''
+                }
+
+                const values = [
+                    ...Array.from(element.labels ?? []).map(
+                        (labelElement) =>
+                            labelElement.innerText ||
+                            labelElement.textContent ||
+                            ''
+                    )
+                ]
+
+                if (element.id) {
+                    values.push(
+                        ...Array.from(
+                            document.querySelectorAll(
+                                `label[for="${escapeSelectorValue(element.id)}"]`
+                            )
+                        ).map(
+                            (labelElement) =>
+                                labelElement.textContent ??
+                                (labelElement instanceof HTMLElement
+                                    ? labelElement.innerText
+                                    : '')
+                        )
+                    )
+                }
+
+                return truncate(uniqueTextParts(values).join(' · '), limit)
             }
             const getElementLabel = (element: Element, limit: number) => {
                 if (!(element instanceof HTMLElement)) {
                     return ''
                 }
 
-                const ariaLabel = element.getAttribute('aria-label')
-
-                if (ariaLabel) {
-                    return truncate(ariaLabel, limit)
-                }
-
-                const titleAttribute = element.getAttribute('title')
-
-                if (titleAttribute) {
-                    return truncate(titleAttribute, limit)
-                }
-
-                if (
-                    element instanceof HTMLInputElement ||
-                    element instanceof HTMLTextAreaElement ||
-                    element instanceof HTMLSelectElement
-                ) {
-                    const firstLabel =
-                        element.labels?.item(0)?.textContent ?? ''
-
-                    if (firstLabel.trim().length > 0) {
-                        return truncate(firstLabel, limit)
-                    }
-                }
-
                 const labelAncestor = element.closest('label')
+                const elementId = element.getAttribute('id')
 
-                if (labelAncestor instanceof HTMLElement) {
-                    return truncate(labelAncestor.innerText, limit)
-                }
-
-                return ''
+                return truncate(
+                    uniqueTextParts([
+                        element.getAttribute('aria-label'),
+                        readIdReferenceText(
+                            element.getAttribute('aria-labelledby'),
+                            limit
+                        ),
+                        element.getAttribute('title'),
+                        element instanceof HTMLImageElement ? element.alt : '',
+                        getFormControlLabel(element, limit),
+                        labelAncestor instanceof HTMLElement
+                            ? labelAncestor.innerText ||
+                              labelAncestor.textContent ||
+                              ''
+                            : '',
+                        elementId
+                            ? Array.from(
+                                  document.querySelectorAll(
+                                      `label[for="${escapeSelectorValue(elementId)}"]`
+                                  )
+                              )
+                                  .map(
+                                      (labelElement) =>
+                                          labelElement.textContent ??
+                                          (labelElement instanceof HTMLElement
+                                              ? labelElement.innerText
+                                              : '')
+                                  )
+                                  .join(' · ')
+                            : '',
+                        getAccessibleHintText(element, limit),
+                        getNestedSvgTitleText(element, limit),
+                        getNestedImageAltText(element, limit)
+                    ]).join(' · '),
+                    limit
+                )
             }
             const getElementHref = (element: Element) =>
                 element instanceof HTMLAnchorElement
                     ? element.href
-                    : (element.getAttribute('href') ?? '')
+                    : (() => {
+                          const directHref = element.getAttribute('href') ?? ''
+
+                          if (directHref.length > 0) {
+                              return directHref
+                          }
+
+                          if (!(element instanceof HTMLElement)) {
+                              return ''
+                          }
+
+                          const nestedAnchors = Array.from(
+                              element.querySelectorAll<HTMLAnchorElement>(
+                                  'a[href]'
+                              )
+                          ).filter((anchorElement) =>
+                              isElementVisible(anchorElement)
+                          )
+
+                          return nestedAnchors.length === 1
+                              ? nestedAnchors[0].href
+                              : ''
+                      })()
             const getElementPlaceholder = (element: Element) =>
                 element instanceof HTMLInputElement ||
                 element instanceof HTMLTextAreaElement
@@ -1269,141 +1586,436 @@ async function captureRawSnapshot(page: Page) {
                 element.getAttribute('role') === 'combobox' ||
                 element.getAttribute('contenteditable') === 'true'
             const hasContentContainer = (element: Element) =>
-                Boolean(
-                    element.closest(
-                        [
-                            'article',
-                            '[role="article"]',
-                            'li',
-                            'main',
-                            'section',
-                            'ytd-video-renderer',
-                            'ytd-rich-item-renderer',
-                            'ytd-rich-grid-media',
-                            'ytd-compact-video-renderer',
-                            'yt-lockup-view-model',
-                            '[class*="card"]',
-                            '[class*="result"]',
-                            '[class*="tile"]'
-                        ].join(',')
-                    )
-                )
-            const buildDedupeKey = (
-                element: Element,
-                href: string,
-                text: string,
-                label: string,
-                placeholder: string
-            ) => {
-                if (href.length > 0) {
-                    return `href:${href}`
+                Boolean(element.closest(contentContainerSelector))
+            const hasInteractiveDatasetHint = (element: Element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return false
                 }
 
-                const descriptor = text || label || placeholder
+                return Object.entries(element.dataset).some(
+                    ([key, value]) =>
+                        /action|click|command|menu|item|tab|toggle|trigger|select/i.test(
+                            key
+                        ) || /action|menu|tab|toggle|select/i.test(value ?? '')
+                )
+            }
+            const getCandidateSource = (
+                element: Element,
+                role: string
+            ): CandidateSource => {
+                const normalizedRole = role.toLowerCase()
+
+                if (
+                    element instanceof HTMLAnchorElement ||
+                    element instanceof HTMLButtonElement ||
+                    element instanceof HTMLInputElement ||
+                    element instanceof HTMLTextAreaElement ||
+                    element instanceof HTMLSelectElement ||
+                    (element instanceof HTMLElement &&
+                        element.tagName.toLowerCase() === 'summary')
+                ) {
+                    return 'native'
+                }
+
+                if (actionableRoles.includes(normalizedRole)) {
+                    return 'semantic'
+                }
+
+                if (
+                    element.getAttribute('contenteditable') === 'true' ||
+                    element.hasAttribute('onclick') ||
+                    element.hasAttribute('aria-controls') ||
+                    element.hasAttribute('aria-haspopup')
+                ) {
+                    return 'implicit'
+                }
+
+                if (element instanceof HTMLElement) {
+                    const tabIndex = element.tabIndex
+
+                    if (tabIndex >= 0) {
+                        return 'implicit'
+                    }
+                }
+
+                return 'container'
+            }
+            const getCandidateKind = (
+                element: Element,
+                role: string
+            ): CandidateKind => {
+                const normalizedRole = role.toLowerCase()
+
+                if (isInputLikeElement(element)) {
+                    return 'field'
+                }
+
+                if (normalizedRole === 'tab') {
+                    return 'tab'
+                }
+
+                if (
+                    normalizedRole === 'checkbox' ||
+                    normalizedRole === 'radio' ||
+                    normalizedRole === 'switch'
+                ) {
+                    return 'toggle'
+                }
+
+                if (
+                    normalizedRole === 'option' ||
+                    element instanceof HTMLOptionElement
+                ) {
+                    return 'option'
+                }
+
+                if (
+                    normalizedRole === 'menuitem' ||
+                    normalizedRole === 'menuitemcheckbox' ||
+                    normalizedRole === 'menuitemradio'
+                ) {
+                    return 'menuitem'
+                }
+
+                if (
+                    element instanceof HTMLAnchorElement ||
+                    normalizedRole === 'link'
+                ) {
+                    return 'link'
+                }
+
+                if (
+                    element instanceof HTMLButtonElement ||
+                    normalizedRole === 'button' ||
+                    (element instanceof HTMLElement &&
+                        element.tagName.toLowerCase() === 'summary')
+                ) {
+                    return 'button'
+                }
+
+                if (element.getAttribute('contenteditable') === 'true') {
+                    return 'editable'
+                }
+
+                if (hasContentContainer(element)) {
+                    return 'container'
+                }
+
+                return 'other'
+            }
+            const isLikelyActionable = (
+                element: Element,
+                role: string,
+                descriptor: string,
+                href: string
+            ) => {
+                const normalizedRole = role.toLowerCase()
+
+                if (
+                    element instanceof HTMLAnchorElement ||
+                    element instanceof HTMLButtonElement ||
+                    element instanceof HTMLInputElement ||
+                    element instanceof HTMLTextAreaElement ||
+                    element instanceof HTMLSelectElement ||
+                    (element instanceof HTMLElement &&
+                        element.tagName.toLowerCase() === 'summary')
+                ) {
+                    return true
+                }
+
+                if (actionableRoles.includes(normalizedRole)) {
+                    return true
+                }
+
+                if (element.getAttribute('contenteditable') === 'true') {
+                    return true
+                }
+
+                if (element.hasAttribute('onclick')) {
+                    return (
+                        descriptor.length > 0 ||
+                        href.length > 0 ||
+                        hasInteractiveDatasetHint(element)
+                    )
+                }
+
+                if (element instanceof HTMLElement && element.tabIndex >= 0) {
+                    return descriptor.length > 0 || href.length > 0
+                }
+
+                if (
+                    element.hasAttribute('aria-controls') ||
+                    element.hasAttribute('aria-haspopup')
+                ) {
+                    return descriptor.length > 0 || href.length > 0
+                }
+
+                if (!(element instanceof HTMLElement)) {
+                    return false
+                }
+
+                const style = window.getComputedStyle(element)
+
+                if (style.cursor === 'pointer') {
+                    return descriptor.length > 0 || href.length > 0
+                }
+
+                if (hasInteractiveDatasetHint(element)) {
+                    return descriptor.length > 0 || href.length > 0
+                }
+
+                return false
+            }
+            const buildDedupeKey = (
+                kind: CandidateKind,
+                element: Element,
+                role: string,
+                href: string,
+                descriptor: string
+            ) => {
+                if (href.length > 0) {
+                    return [
+                        kind,
+                        role,
+                        element.tagName.toLowerCase(),
+                        normalizeForCompare(href),
+                        normalizeForCompare(descriptor)
+                    ].join('|')
+                }
 
                 if (descriptor.length > 0) {
                     return [
+                        kind,
+                        role,
                         element.tagName.toLowerCase(),
-                        element.getAttribute('role') ?? '',
-                        descriptor
+                        normalizeForCompare(descriptor)
                     ].join('|')
                 }
 
                 const rect = element.getBoundingClientRect()
 
-                return `position:${rect.top}:${rect.left}:${element.tagName.toLowerCase()}`
+                return `position:${kind}:${rect.top}:${rect.left}:${element.tagName.toLowerCase()}`
             }
-            const computeSelectionScore = (
-                element: Element,
-                text: string,
-                label: string,
-                placeholder: string,
+            const computeSelectionScore = (candidate: {
+                element: Element
+                rect: DOMRect
+                kind: CandidateKind
+                source: CandidateSource
+                text: string
+                label: string
+                placeholder: string
                 href: string
-            ) => {
+                role: string
+                disabled: boolean
+            }) => {
+                const {
+                    element,
+                    rect,
+                    kind,
+                    source,
+                    text,
+                    label,
+                    placeholder,
+                    href,
+                    role,
+                    disabled
+                } = candidate
+
                 if (!(element instanceof HTMLElement)) {
                     return Number.NEGATIVE_INFINITY
                 }
 
-                const rect = element.getBoundingClientRect()
-                const role = element.getAttribute('role') ?? ''
                 const descriptorLength = Math.max(
                     text.length,
                     label.length,
                     placeholder.length
                 )
-                const isInputLike = isInputLikeElement(element)
-                const isLinkLike =
-                    element instanceof HTMLAnchorElement || role === 'link'
-                const isTinyControl = rect.width <= 72 && rect.height <= 72
-                const isMediaCandidate =
-                    href.includes('/watch') ||
-                    href.includes('/playlist') ||
-                    href.includes('/shorts/') ||
-                    href.includes('/results?search_query=')
+                const area = rect.width * rect.height
+                const isTinyControl = rect.width <= 28 || rect.height <= 20
+                const normalizedRole = role.toLowerCase()
+                const isContainer = kind === 'container'
+                const inPriorityRegion = Boolean(
+                    element.closest(
+                        'main, nav, header, form, [role="dialog"], [role="menu"], [role="listbox"], [role="tablist"]'
+                    )
+                )
 
                 let score = 0
 
-                if (isInputLike) {
-                    score += 460
+                switch (kind) {
+                    case 'field':
+                        score += 620
+                        break
+                    case 'editable':
+                        score += 560
+                        break
+                    case 'toggle':
+                        score += 360
+                        break
+                    case 'tab':
+                        score += 340
+                        break
+                    case 'option':
+                    case 'menuitem':
+                        score += 320
+                        break
+                    case 'button':
+                        score += 300
+                        break
+                    case 'link':
+                        score += 260
+                        break
+                    case 'container':
+                        score += 210
+                        break
+                    case 'other':
+                        score += 150
+                        break
                 }
 
-                if (isLinkLike) {
-                    score += 180
-                }
-
-                if (hasContentContainer(element)) {
-                    score += 200
+                switch (source) {
+                    case 'native':
+                        score += 110
+                        break
+                    case 'semantic':
+                        score += 95
+                        break
+                    case 'implicit':
+                        score += 70
+                        break
+                    case 'container':
+                        score += 40
+                        break
                 }
 
                 if (href.length > 0) {
-                    score += 140
+                    score += 110
                 }
 
-                if (isMediaCandidate) {
-                    score += 260
+                if (hasContentContainer(element) && !isContainer) {
+                    score += 90
                 }
 
-                score += Math.min(descriptorLength, 120)
+                if (descriptorLength > 0) {
+                    score += Math.min(descriptorLength, 150)
+                }
 
                 if (text.length > 0) {
-                    score += 80
+                    score += Math.min(120, 36 + text.length)
                 }
 
                 if (label.length > 0) {
-                    score += 40
+                    score += Math.min(140, 64 + label.length)
                 }
 
                 if (placeholder.length > 0) {
-                    score += 60
-                }
-
-                if (rect.top >= 0) {
-                    score += Math.max(0, 220 - Math.min(rect.top, 220))
-                } else {
-                    score -= 120
-                }
-
-                if (rect.height * rect.width >= 24_000) {
-                    score += 40
-                }
-
-                if (isTinyControl) {
-                    score -= 140
+                    score += 56
                 }
 
                 if (
-                    descriptorLength === 0 &&
-                    href.length === 0 &&
-                    !isInputLike
+                    label.length > 0 &&
+                    text.length > 0 &&
+                    normalizeForCompare(label) !== normalizeForCompare(text)
                 ) {
-                    score -= 240
+                    score += 24
+                }
+
+                if (rect.top >= 0) {
+                    score += Math.max(0, 240 - Math.min(rect.top, 420))
+                } else {
+                    score -= 80
+                }
+
+                if (rect.bottom <= window.innerHeight + 24) {
+                    score += 26
+                }
+
+                if (area >= 600 && area <= 140_000) {
+                    score += 40
+                } else if (area > 220_000) {
+                    score -= isContainer ? 110 : 30
+                }
+
+                if (inPriorityRegion) {
+                    score += 42
+                }
+
+                if (isTinyControl) {
+                    score -= descriptorLength > 0 || href.length > 0 ? 24 : 170
+                }
+
+                if (
+                    isContainer &&
+                    descriptorLength < 12 &&
+                    href.length === 0 &&
+                    normalizedRole.length === 0
+                ) {
+                    score -= 180
                 }
 
                 if (element.getAttribute('aria-hidden') === 'true') {
-                    score -= 40
+                    score -= 100
+                }
+
+                if (disabled) {
+                    score -= 220
+                }
+
+                if (
+                    element.getAttribute('aria-current') === 'page' ||
+                    element.getAttribute('aria-selected') === 'true' ||
+                    element.getAttribute('aria-pressed') === 'true'
+                ) {
+                    score += 24
+                }
+
+                if (hasInteractiveDatasetHint(element)) {
+                    score += 22
                 }
 
                 return score
+            }
+            const shouldIncludeContainerCandidate = (element: Element) => {
+                if (!(element instanceof HTMLElement)) {
+                    return false
+                }
+
+                if (!isElementVisible(element)) {
+                    return false
+                }
+
+                const role = element.getAttribute('role') ?? ''
+                const descriptor = uniqueTextParts([
+                    getElementLabel(element, 80),
+                    getElementText(element, 80)
+                ]).join(' · ')
+                const href = getElementHref(element)
+                const rect = element.getBoundingClientRect()
+
+                if (rect.width * rect.height > 420_000) {
+                    return false
+                }
+
+                return isLikelyActionable(element, role, descriptor, href)
+            }
+            const collectedElements = new Map<Element, true>()
+            const rememberCandidate = (element: Element | null | undefined) => {
+                if (!(element instanceof Element)) {
+                    return
+                }
+
+                if (
+                    element === document.documentElement ||
+                    element === document.body
+                ) {
+                    return
+                }
+
+                if (!isElementVisible(element)) {
+                    return
+                }
+
+                collectedElements.set(element, true)
             }
 
             const headings = Array.from(
@@ -1446,10 +2058,21 @@ async function captureRawSnapshot(page: Page) {
                 )
                 .slice(0, maxRegions)
 
-            const elements = Array.from(
-                document.querySelectorAll(interactiveSelector)
+            Array.from(document.querySelectorAll(interactiveSelector)).forEach(
+                (element) => {
+                    rememberCandidate(element)
+                }
             )
-                .filter(isElementVisible)
+
+            Array.from(
+                document.querySelectorAll(contentContainerSelector)
+            ).forEach((element) => {
+                if (shouldIncludeContainerCandidate(element)) {
+                    rememberCandidate(element)
+                }
+            })
+
+            const filteredCandidates = Array.from(collectedElements.keys())
                 .map((element) => {
                     const rect = element.getBoundingClientRect()
                     const text = getElementText(element, maxElementTextLength)
@@ -1457,6 +2080,14 @@ async function captureRawSnapshot(page: Page) {
                     const href = getElementHref(element)
                     const placeholder = getElementPlaceholder(element)
                     const role = element.getAttribute('role') ?? undefined
+                    const candidateRole = role ?? ''
+                    const descriptor = uniqueTextParts([
+                        label,
+                        text,
+                        placeholder
+                    ]).join(' · ')
+                    const kind = getCandidateKind(element, candidateRole)
+                    const source = getCandidateSource(element, candidateRole)
                     const type =
                         element instanceof HTMLInputElement
                             ? element.type
@@ -1470,24 +2101,40 @@ async function captureRawSnapshot(page: Page) {
                             element.disabled) ||
                         element.getAttribute('aria-disabled') === 'true'
 
+                    if (
+                        !isLikelyActionable(
+                            element,
+                            candidateRole,
+                            descriptor,
+                            href
+                        )
+                    ) {
+                        return null
+                    }
+
                     return {
                         element,
                         rectTop: rect.top,
                         rectLeft: rect.left,
                         dedupeKey: buildDedupeKey(
+                            kind,
                             element,
+                            candidateRole,
                             href,
-                            text,
-                            label,
-                            placeholder
+                            descriptor
                         ),
-                        score: computeSelectionScore(
+                        score: computeSelectionScore({
                             element,
+                            rect,
+                            kind,
+                            source,
                             text,
                             label,
                             placeholder,
-                            href
-                        ),
+                            href,
+                            role: candidateRole,
+                            disabled
+                        }),
                         descriptorLength: Math.max(
                             text.length,
                             label.length,
@@ -1500,27 +2147,16 @@ async function captureRawSnapshot(page: Page) {
                         label,
                         placeholder: placeholder || undefined,
                         href: href || undefined,
-                        disabled
+                        disabled,
+                        kind
                     }
                 })
-                .reduce<
-                    Array<{
-                        element: Element
-                        rectTop: number
-                        rectLeft: number
-                        dedupeKey: string
-                        score: number
-                        descriptorLength: number
-                        tag: string
-                        role?: string
-                        type?: string
-                        text: string
-                        label: string
-                        placeholder?: string
-                        href?: string
-                        disabled: boolean
-                    }>
-                >((selected, candidate) => {
+                .filter(
+                    (candidate) => candidate !== null
+                ) as SnapshotCandidate[]
+
+            const elements = filteredCandidates
+                .reduce<SnapshotCandidate[]>((selected, candidate) => {
                     const existingIndex = selected.findIndex(
                         (existingCandidate) =>
                             existingCandidate.dedupeKey === candidate.dedupeKey
@@ -1554,6 +2190,43 @@ async function captureRawSnapshot(page: Page) {
                     }
 
                     return left.rectLeft - right.rectLeft
+                })
+                .filter((candidate, index, candidates) => {
+                    const descriptor = normalizeForCompare(
+                        candidate.label ||
+                            candidate.text ||
+                            candidate.placeholder ||
+                            ''
+                    )
+
+                    if (descriptor.length === 0) {
+                        return true
+                    }
+
+                    const groupKey = `${candidate.kind}|${descriptor.slice(0, 18)}`
+                    const groupLimit =
+                        candidate.kind === 'container'
+                            ? 3
+                            : candidate.kind === 'tab'
+                              ? 10
+                              : 8
+                    const previousMatches = candidates
+                        .slice(0, index)
+                        .filter((item) => {
+                            const previousDescriptor = normalizeForCompare(
+                                item.label ||
+                                    item.text ||
+                                    item.placeholder ||
+                                    ''
+                            )
+
+                            return (
+                                `${item.kind}|${previousDescriptor.slice(0, 18)}` ===
+                                groupKey
+                            )
+                        })
+
+                    return previousMatches.length < groupLimit
                 })
                 .slice(0, maxElements)
                 .sort((left, right) => {
@@ -1610,6 +2283,9 @@ async function captureRawSnapshot(page: Page) {
         {
             interactiveSelector: INTERACTIVE_SELECTOR,
             regionSelector: REGION_SELECTOR,
+            contentContainerSelector: CONTENT_CONTAINER_SELECTOR,
+            accessibleNameHintSelector: ACCESSIBLE_NAME_HINT_SELECTOR,
+            actionableRoles: ACTIONABLE_ROLES,
             targetIdAttribute: TARGET_ID_ATTRIBUTE,
             activeTargetMarkerAttribute: ACTIVE_TARGET_MARKER_ATTRIBUTE,
             maxElements: MAX_ELEMENTS,
@@ -1805,6 +2481,32 @@ async function waitForElementMatch(
         ({ interactiveSelector, expectedText }) => {
             const normalizeWhitespace = (value: string) =>
                 value.replace(/\s+/g, ' ').trim().toLowerCase()
+            const uniqueTextParts = (
+                values: Array<string | null | undefined>
+            ) => {
+                const seen = new Set<string>()
+                const parts: string[] = []
+
+                for (const value of values) {
+                    if (typeof value !== 'string') {
+                        continue
+                    }
+
+                    const normalizedValue = normalizeWhitespace(value)
+
+                    if (
+                        normalizedValue.length === 0 ||
+                        seen.has(normalizedValue)
+                    ) {
+                        continue
+                    }
+
+                    seen.add(normalizedValue)
+                    parts.push(normalizedValue)
+                }
+
+                return parts
+            }
             const isElementVisible = (element: Element) => {
                 if (!(element instanceof HTMLElement)) {
                     return false
@@ -1827,6 +2529,27 @@ async function waitForElementMatch(
 
                 return rect.bottom >= 0 && rect.top <= window.innerHeight * 1.5
             }
+            const readIdReferenceText = (value: string | null) =>
+                uniqueTextParts(
+                    (value ?? '')
+                        .split(/\s+/)
+                        .map((id) => id.trim())
+                        .filter((id) => id.length > 0)
+                        .map((id) => {
+                            const referencedElement =
+                                document.getElementById(id)
+
+                            if (!(referencedElement instanceof HTMLElement)) {
+                                return ''
+                            }
+
+                            return (
+                                referencedElement.innerText ||
+                                referencedElement.textContent ||
+                                ''
+                            )
+                        })
+                )
 
             return Array.from(
                 document.querySelectorAll(interactiveSelector)
@@ -1835,14 +2558,29 @@ async function waitForElementMatch(
                     return false
                 }
 
-                const parts = [
+                const formControlLabel =
+                    element instanceof HTMLInputElement ||
+                    element instanceof HTMLTextAreaElement ||
+                    element instanceof HTMLSelectElement
+                        ? Array.from(element.labels ?? []).map(
+                              (labelElement) =>
+                                  labelElement.innerText ||
+                                  labelElement.textContent ||
+                                  ''
+                          )
+                        : []
+
+                const parts = uniqueTextParts([
                     element.textContent ?? '',
                     element.getAttribute('aria-label') ?? '',
+                    readIdReferenceText(
+                        element.getAttribute('aria-labelledby')
+                    ).join(' '),
                     element.getAttribute('placeholder') ?? '',
-                    element.getAttribute('title') ?? ''
-                ]
-                    .map(normalizeWhitespace)
-                    .filter((value) => value.length > 0)
+                    element.getAttribute('title') ?? '',
+                    element instanceof HTMLImageElement ? element.alt : '',
+                    ...formControlLabel
+                ])
 
                 return parts.some((value) => value.includes(expectedText))
             })
