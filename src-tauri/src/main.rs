@@ -38,6 +38,12 @@ struct BrowserAgentRequest {
     timeout_ms: Option<u32>,
     direction: Option<String>,
     amount: Option<u32>,
+    snapshot_mode: Option<String>,
+    focus_text: Option<String>,
+    url_includes: Option<String>,
+    minimum_change: Option<u32>,
+    wait_for_text: Option<String>,
+    wait_for_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,7 +91,31 @@ struct BrowserPageSnapshot {
     headings: Vec<BrowserSnapshotHeading>,
     regions: Vec<BrowserSnapshotRegion>,
     elements: Vec<BrowserSnapshotElement>,
+    mode: String,
+    focus_text: Option<String>,
     generated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserAgentReadiness {
+    state: String,
+    detail: String,
+    url_changed: bool,
+    content_changed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserAgentMetrics {
+    action_duration_ms: u32,
+    settle_duration_ms: u32,
+    snapshot_duration_ms: u32,
+    snapshot_bytes: u32,
+    snapshot_mode: String,
+    snapshot_element_count: u32,
+    snapshot_heading_count: u32,
+    snapshot_region_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +125,8 @@ struct BrowserAgentActionResult {
     status: String,
     detail: String,
     snapshot: BrowserPageSnapshot,
+    readiness: BrowserAgentReadiness,
+    metrics: BrowserAgentMetrics,
 }
 
 #[derive(Debug, Deserialize)]

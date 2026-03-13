@@ -5,18 +5,22 @@ import {
     BROWSER_API_KEY_STORAGE_KEY,
     BROWSER_GEMINI_MODEL_STORAGE_KEY,
     BROWSER_LLM_PROVIDER_STORAGE_KEY,
+    BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
     BROWSER_MODAL_API_KEY_STORAGE_KEY,
     BROWSER_MODAL_MODEL_STORAGE_KEY,
     BROWSER_MODAL_THINKING_STORAGE_KEY,
+    DEFAULT_MAX_AGENT_TOOL_STEPS,
     DEFAULT_LLM_PROVIDER,
     GEMINI_API_KEY_STORAGE_KEY,
     GEMINI_MODEL_STORAGE_KEY,
     LLM_PROVIDER_STORAGE_KEY,
+    MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
     MODAL_API_KEY_STORAGE_KEY,
     MODAL_MODEL_STORAGE_KEY,
     MODAL_THINKING_STORAGE_KEY,
     normalizeGeminiModelId,
     normalizeLLMProvider,
+    normalizeMaxAgentToolSteps,
     normalizeModalThinkingEnabled,
     normalizeModalModelId
 } from '@/features/agent/constants'
@@ -35,10 +39,14 @@ function getSettingsStore() {
 function normalizeSettings(
     settings:
         | (Partial<
-              Omit<AgentLLMSettings, 'provider' | 'modalThinkingEnabled'>
+              Omit<
+                  AgentLLMSettings,
+                  'provider' | 'modalThinkingEnabled' | 'maxAgentToolSteps'
+              >
           > & {
               provider?: string | null
               modalThinkingEnabled?: boolean | string | null
+              maxAgentToolSteps?: number | string | null
           })
         | null
         | undefined
@@ -51,6 +59,9 @@ function normalizeSettings(
         modalModelId: normalizeModalModelId(settings?.modalModelId),
         modalThinkingEnabled: normalizeModalThinkingEnabled(
             settings?.modalThinkingEnabled
+        ),
+        maxAgentToolSteps: normalizeMaxAgentToolSteps(
+            settings?.maxAgentToolSteps
         )
     }
 }
@@ -75,7 +86,11 @@ export async function loadLLMSettings(): Promise<AgentLLMSettings> {
                 undefined,
             modalThinkingEnabled: window.localStorage.getItem(
                 BROWSER_MODAL_THINKING_STORAGE_KEY
-            )
+            ),
+            maxAgentToolSteps:
+                window.localStorage.getItem(
+                    BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY
+                ) ?? DEFAULT_MAX_AGENT_TOOL_STEPS
         })
     }
 
@@ -89,6 +104,9 @@ export async function loadLLMSettings(): Promise<AgentLLMSettings> {
         modalModelId: await store.get<string>(MODAL_MODEL_STORAGE_KEY),
         modalThinkingEnabled: await store.get<boolean | string>(
             MODAL_THINKING_STORAGE_KEY
+        ),
+        maxAgentToolSteps: await store.get<number | string>(
+            MAX_AGENT_TOOL_STEPS_STORAGE_KEY
         )
     })
 }
@@ -135,6 +153,10 @@ export async function saveLLMSettings(
             BROWSER_MODAL_THINKING_STORAGE_KEY,
             String(nextSettings.modalThinkingEnabled)
         )
+        window.localStorage.setItem(
+            BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
+            String(nextSettings.maxAgentToolSteps)
+        )
 
         return nextSettings
     }
@@ -161,6 +183,10 @@ export async function saveLLMSettings(
     await store.set(
         MODAL_THINKING_STORAGE_KEY,
         nextSettings.modalThinkingEnabled
+    )
+    await store.set(
+        MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
+        nextSettings.maxAgentToolSteps
     )
 
     await store.save()

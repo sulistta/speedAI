@@ -2,6 +2,7 @@ import { emit } from '@tauri-apps/api/event'
 import { isTauri } from '@tauri-apps/api/core'
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type {
+    AgentExecutionMetrics,
     AgentResultSummary,
     AgentStatusEntry
 } from '@/features/agent/types'
@@ -58,7 +59,44 @@ function normalizeResultSummary(summary: unknown): AgentResultSummary | null {
         request: candidate.request,
         providerLabel: candidate.providerLabel,
         modelLabel: candidate.modelLabel,
-        entries
+        entries,
+        metrics: normalizeExecutionMetrics(candidate.metrics)
+    }
+}
+
+function normalizeExecutionMetrics(
+    metrics: unknown
+): AgentExecutionMetrics | undefined {
+    if (typeof metrics !== 'object' || metrics === null) {
+        return undefined
+    }
+
+    const candidate = metrics as Partial<AgentExecutionMetrics>
+
+    if (
+        typeof candidate.totalDurationMs !== 'number' ||
+        typeof candidate.stepCount !== 'number' ||
+        typeof candidate.llmRoundTrips !== 'number' ||
+        typeof candidate.llmLatencyMs !== 'number' ||
+        typeof candidate.toolCalls !== 'number' ||
+        typeof candidate.toolLatencyMs !== 'number' ||
+        typeof candidate.settleLatencyMs !== 'number' ||
+        typeof candidate.snapshotLatencyMs !== 'number' ||
+        typeof candidate.snapshotBytes !== 'number'
+    ) {
+        return undefined
+    }
+
+    return {
+        totalDurationMs: candidate.totalDurationMs,
+        stepCount: candidate.stepCount,
+        llmRoundTrips: candidate.llmRoundTrips,
+        llmLatencyMs: candidate.llmLatencyMs,
+        toolCalls: candidate.toolCalls,
+        toolLatencyMs: candidate.toolLatencyMs,
+        settleLatencyMs: candidate.settleLatencyMs,
+        snapshotLatencyMs: candidate.snapshotLatencyMs,
+        snapshotBytes: candidate.snapshotBytes
     }
 }
 

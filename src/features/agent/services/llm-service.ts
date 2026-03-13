@@ -38,6 +38,7 @@ export async function runAgentCommand(
             settings.modalApiKey,
             settings.modalModelId,
             settings.modalThinkingEnabled,
+            settings.maxAgentToolSteps,
             onStatus
         )
     }
@@ -46,6 +47,7 @@ export async function runAgentCommand(
         input,
         settings.geminiApiKey,
         settings.geminiModelId,
+        settings.maxAgentToolSteps,
         onStatus
     )
 }

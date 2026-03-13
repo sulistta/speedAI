@@ -1,5 +1,6 @@
 import { MAX_STATUS_ENTRIES } from '@/features/agent/constants'
 import type {
+    AgentExecutionMetrics,
     AgentResultSummary,
     AgentResultTone,
     AgentStatusEntry,
@@ -42,6 +43,7 @@ export function createStatusEntry({
 export function createResultSummary({
     detail,
     entries,
+    metrics,
     modelLabel,
     providerLabel,
     request,
@@ -50,6 +52,7 @@ export function createResultSummary({
 }: {
     detail: string
     entries: AgentStatusEntry[]
+    metrics?: AgentExecutionMetrics
     modelLabel: string
     providerLabel: string
     request: string
@@ -65,7 +68,8 @@ export function createResultSummary({
         request,
         providerLabel,
         modelLabel,
-        entries: [...entries]
+        entries: [...entries],
+        metrics
     }
 }
 
@@ -97,4 +101,20 @@ export function maskApiKey(apiKey: string) {
     }
 
     return `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}`
+}
+
+export function formatDurationMs(durationMs: number) {
+    if (durationMs < 1000) {
+        return `${durationMs} ms`
+    }
+
+    return `${(durationMs / 1000).toFixed(durationMs >= 10_000 ? 0 : 1)} s`
+}
+
+export function formatBytes(byteCount: number) {
+    if (byteCount < 1024) {
+        return `${byteCount} B`
+    }
+
+    return `${(byteCount / 1024).toFixed(byteCount >= 10 * 1024 ? 0 : 1)} KB`
 }

@@ -5,10 +5,7 @@ import {
     type FunctionDeclaration,
     FunctionCallingConfigMode
 } from '@google/genai'
-import {
-    MAX_AGENT_TOOL_STEPS,
-    normalizeGeminiModelId
-} from '@/features/agent/constants'
+import { normalizeGeminiModelId } from '@/features/agent/constants'
 import {
     browserSystemInstruction,
     browserToolDefinitions,
@@ -19,6 +16,7 @@ import {
     parseBrowserToolArguments
 } from '@/features/agent/services/browser-tooling'
 import { executeBrowserAgentAction } from '@/features/agent/services/desktop-actions'
+import { createExecutionMetricsTracker } from '@/features/agent/services/execution-metrics'
 import type {
     AgentExecutionStatus,
     AgentRunResult
@@ -43,8 +41,11 @@ export async function runGeminiAgentCommand(
     input: string,
     apiKey: string,
     modelId: string,
+    maxAgentToolSteps: number,
     onStatus?: (status: AgentExecutionStatus) => void
 ): Promise<AgentRunResult> {
+    const tracker = createExecutionMetricsTracker()
+    const startedAt = Date.now()
     const cleanedInput = input.trim()
     const cleanedApiKey = apiKey.trim()
     const cleanedModelId = normalizeGeminiModelId(modelId)
@@ -79,18 +80,30 @@ export async function runGeminiAgentCommand(
         }
     })
 
-    let response = await chat.sendMessage({
+    async function sendMessage(
+        message: Parameters<typeof chat.sendMessage>[0]
+    ) {
+        const llmStartedAt = Date.now()
+        const response = await chat.sendMessage(message)
+
+        tracker.recordLLMCall(Date.now() - llmStartedAt)
+
+        return response
+    }
+
+    let response = await sendMessage({
         message: cleanedInput
     })
 
-    for (let step = 1; step <= MAX_AGENT_TOOL_STEPS; step += 1) {
+    for (let step = 1; step <= maxAgentToolSteps; step += 1) {
         const functionCalls = response.functionCalls ?? []
 
         if (functionCalls.length === 0) {
             if (response.text?.trim().length) {
                 return {
                     message: response.text.trim(),
-                    stepCount: step - 1
+                    stepCount: step - 1,
+                    metrics: tracker.finalize(Date.now() - startedAt, step - 1)
                 }
             }
 
@@ -114,6 +127,8 @@ export async function runGeminiAgentCommand(
             const executionResult =
                 await executeBrowserAgentAction(parsedToolCall)
 
+            tracker.recordToolResult(executionResult)
+
             onStatus?.({
                 tone: 'info',
                 title: executionResult.status,
@@ -121,7 +136,7 @@ export async function runGeminiAgentCommand(
                 toolName: getToolName(parsedToolCall)
             })
 
-            response = await chat.sendMessage({
+            response = await sendMessage({
                 message: [
                     createPartFromFunctionResponse(
                         functionCall.id ?? `tool-step-${step}`,
@@ -138,7 +153,7 @@ export async function runGeminiAgentCommand(
                 toolName: getToolName(parsedToolCall)
             })
 
-            response = await chat.sendMessage({
+            response = await sendMessage({
                 message: [
                     createPartFromFunctionResponse(
                         functionCall.id ?? `tool-step-${step}`,
@@ -153,11 +168,12 @@ export async function runGeminiAgentCommand(
     if (response.text?.trim().length) {
         return {
             message: response.text.trim(),
-            stepCount: MAX_AGENT_TOOL_STEPS
+            stepCount: maxAgentToolSteps,
+            metrics: tracker.finalize(Date.now() - startedAt, maxAgentToolSteps)
         }
     }
 
     throw new Error(
-        `O agente atingiu o limite de ${MAX_AGENT_TOOL_STEPS} etapas sem concluir a tarefa.`
+        `O agente atingiu o limite de ${maxAgentToolSteps} etapas sem concluir a tarefa.`
     )
 }

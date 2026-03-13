@@ -19,6 +19,7 @@ export interface AgentLLMSettings {
     modalApiKey: string
     modalModelId: string
     modalThinkingEnabled: boolean
+    maxAgentToolSteps: number
 }
 
 export interface ModalToolCall {
@@ -67,6 +68,8 @@ export interface ModalChatCompletionResponse {
     }
 }
 
+export type BrowserSnapshotMode = 'full' | 'interactive' | 'focused' | 'delta'
+
 export type BrowserAgentActionName =
     | 'navigate'
     | 'snapshot'
@@ -74,7 +77,19 @@ export type BrowserAgentActionName =
     | 'type'
     | 'press'
     | 'wait'
+    | 'waitForNavigation'
+    | 'waitForUrl'
+    | 'waitForText'
+    | 'waitForElement'
+    | 'waitForResultsChange'
     | 'scroll'
+    | 'clickAndWait'
+    | 'typeAndSubmit'
+
+export interface BrowserSnapshotOptions {
+    snapshotMode?: BrowserSnapshotMode
+    focusText?: string
+}
 
 export interface BrowserSnapshotHeading {
     tag: string
@@ -105,51 +120,127 @@ export interface BrowserPageSnapshot {
     headings: BrowserSnapshotHeading[]
     regions: BrowserSnapshotRegion[]
     elements: BrowserSnapshotElement[]
+    mode: BrowserSnapshotMode
+    focusText?: string
     generatedAt: string
 }
 
 export type BrowserAgentAction =
-    | {
+    | ({
           action: 'navigate'
           url: string
-      }
-    | {
+      } & BrowserSnapshotOptions)
+    | ({
           action: 'snapshot'
-      }
-    | {
+      } & BrowserSnapshotOptions)
+    | ({
           action: 'click'
           targetId: string
-      }
-    | {
+      } & BrowserSnapshotOptions)
+    | ({
           action: 'type'
           targetId: string
           text: string
           submit?: boolean
-      }
-    | {
+      } & BrowserSnapshotOptions)
+    | ({
           action: 'press'
           key: string
-      }
-    | {
+      } & BrowserSnapshotOptions)
+    | ({
           action: 'wait'
           timeoutMs?: number
-      }
-    | {
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'waitForNavigation'
+          timeoutMs?: number
+          urlIncludes?: string
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'waitForUrl'
+          url: string
+          timeoutMs?: number
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'waitForText'
+          text: string
+          timeoutMs?: number
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'waitForElement'
+          targetId?: string
+          text?: string
+          timeoutMs?: number
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'waitForResultsChange'
+          timeoutMs?: number
+          minimumChange?: number
+      } & BrowserSnapshotOptions)
+    | ({
           action: 'scroll'
           direction: 'up' | 'down'
           amount?: number
-      }
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'clickAndWait'
+          targetId: string
+          waitForText?: string
+          waitForUrl?: string
+          timeoutMs?: number
+      } & BrowserSnapshotOptions)
+    | ({
+          action: 'typeAndSubmit'
+          targetId: string
+          text: string
+          waitForText?: string
+          waitForUrl?: string
+          timeoutMs?: number
+      } & BrowserSnapshotOptions)
+
+export interface BrowserAgentReadiness {
+    state: 'stable' | 'changed'
+    detail: string
+    urlChanged: boolean
+    contentChanged: boolean
+}
+
+export interface BrowserAgentMetrics {
+    actionDurationMs: number
+    settleDurationMs: number
+    snapshotDurationMs: number
+    snapshotBytes: number
+    snapshotMode: BrowserSnapshotMode
+    snapshotElementCount: number
+    snapshotHeadingCount: number
+    snapshotRegionCount: number
+}
 
 export interface BrowserAgentActionResult {
     action: BrowserAgentActionName
     status: string
     detail: string
     snapshot: BrowserPageSnapshot
+    readiness: BrowserAgentReadiness
+    metrics: BrowserAgentMetrics
+}
+
+export interface AgentExecutionMetrics {
+    totalDurationMs: number
+    stepCount: number
+    llmRoundTrips: number
+    llmLatencyMs: number
+    toolCalls: number
+    toolLatencyMs: number
+    settleLatencyMs: number
+    snapshotLatencyMs: number
+    snapshotBytes: number
 }
 
 export interface AgentRunResult {
     message: string
     stepCount: number
+    metrics: AgentExecutionMetrics
 }
 
 export interface AgentExecutionStatus {
@@ -179,6 +270,7 @@ export interface AgentResultSummary {
     providerLabel: string
     modelLabel: string
     entries: AgentStatusEntry[]
+    metrics?: AgentExecutionMetrics
 }
 
 export interface SettingsFeedback {

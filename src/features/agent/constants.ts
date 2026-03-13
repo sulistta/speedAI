@@ -14,12 +14,18 @@ export const BROWSER_MODAL_MODEL_STORAGE_KEY = 'speedai.modal_model_id'
 export const MODAL_THINKING_STORAGE_KEY = 'modal_thinking_enabled'
 export const BROWSER_MODAL_THINKING_STORAGE_KEY =
     'speedai.modal_thinking_enabled'
+export const MAX_AGENT_TOOL_STEPS_STORAGE_KEY = 'max_agent_tool_steps'
+export const BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY =
+    'speedai.max_agent_tool_steps'
 
 export const DEFAULT_LLM_PROVIDER: LLMProvider = 'gemini'
 
 export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3-flash-preview'
 export const DEFAULT_MODAL_MODEL_ID = 'zai-org/GLM-5-FP8'
 export const DEFAULT_MODAL_THINKING_ENABLED = true
+export const DEFAULT_MAX_AGENT_TOOL_STEPS = 10
+export const MIN_AGENT_TOOL_STEPS = 5
+export const MAX_AGENT_TOOL_STEPS_LIMIT = 50
 export const MODAL_BASE_URL = 'https://api.us-west-2.modal.direct/v1'
 export const MODAL_CHAT_COMPLETIONS_PATH = '/chat/completions'
 export const MODAL_MAX_OUTPUT_TOKENS = 768
@@ -122,13 +128,50 @@ export function normalizeModalThinkingEnabled(
     return DEFAULT_MODAL_THINKING_ENABLED
 }
 
+export function normalizeMaxAgentToolSteps(
+    maxAgentToolSteps: number | string | null | undefined
+) {
+    if (typeof maxAgentToolSteps === 'number') {
+        if (Number.isNaN(maxAgentToolSteps)) {
+            return DEFAULT_MAX_AGENT_TOOL_STEPS
+        }
+
+        return Math.min(
+            Math.max(Math.round(maxAgentToolSteps), MIN_AGENT_TOOL_STEPS),
+            MAX_AGENT_TOOL_STEPS_LIMIT
+        )
+    }
+
+    if (typeof maxAgentToolSteps === 'string') {
+        const parsedValue = Number.parseInt(maxAgentToolSteps, 10)
+
+        if (Number.isNaN(parsedValue)) {
+            return DEFAULT_MAX_AGENT_TOOL_STEPS
+        }
+
+        return Math.min(
+            Math.max(parsedValue, MIN_AGENT_TOOL_STEPS),
+            MAX_AGENT_TOOL_STEPS_LIMIT
+        )
+    }
+
+    return DEFAULT_MAX_AGENT_TOOL_STEPS
+}
+
 export const WEB_NAVIGATE_TOOL_NAME = 'web_navigate'
 export const WEB_SNAPSHOT_TOOL_NAME = 'web_snapshot'
 export const WEB_CLICK_TOOL_NAME = 'web_click'
 export const WEB_TYPE_TOOL_NAME = 'web_type'
 export const WEB_PRESS_TOOL_NAME = 'web_press'
 export const WEB_WAIT_TOOL_NAME = 'web_wait'
+export const WEB_WAIT_FOR_NAVIGATION_TOOL_NAME = 'web_wait_for_navigation'
+export const WEB_WAIT_FOR_URL_TOOL_NAME = 'web_wait_for_url'
+export const WEB_WAIT_FOR_TEXT_TOOL_NAME = 'web_wait_for_text'
+export const WEB_WAIT_FOR_ELEMENT_TOOL_NAME = 'web_wait_for_element'
+export const WEB_WAIT_FOR_RESULTS_CHANGE_TOOL_NAME =
+    'web_wait_for_results_change'
 export const WEB_SCROLL_TOOL_NAME = 'web_scroll'
+export const WEB_CLICK_AND_WAIT_TOOL_NAME = 'web_click_and_wait'
+export const WEB_TYPE_AND_SUBMIT_TOOL_NAME = 'web_type_and_submit'
 
 export const MAX_STATUS_ENTRIES = 10
-export const MAX_AGENT_TOOL_STEPS = 10

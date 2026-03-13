@@ -7,8 +7,11 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+    DEFAULT_MAX_AGENT_TOOL_STEPS,
     GEMINI_MODEL_OPTIONS,
     LLM_PROVIDER_OPTIONS,
+    MAX_AGENT_TOOL_STEPS_LIMIT,
+    MIN_AGENT_TOOL_STEPS,
     MODAL_BASE_URL,
     MODAL_MODEL_OPTIONS,
     getGeminiModelLabel,
@@ -24,12 +27,14 @@ interface SettingsViewProps {
     geminiApiKey: string
     geminiModelId: string
     isSaving: boolean
+    maxAgentToolSteps: number
     modalApiKey: string
     modalModelId: string
     modalThinkingEnabled: boolean
     onBack: () => void
     onGeminiApiKeyChange: (value: string) => void
     onGeminiModelIdChange: (value: string) => void
+    onMaxAgentToolStepsChange: (value: string) => void
     onModalApiKeyChange: (value: string) => void
     onModalModelIdChange: (value: string) => void
     onModalThinkingEnabledChange: (value: boolean) => void
@@ -54,12 +59,14 @@ export default function SettingsView({
     geminiApiKey,
     geminiModelId,
     isSaving,
+    maxAgentToolSteps,
     modalApiKey,
     modalModelId,
     modalThinkingEnabled,
     onBack,
     onGeminiApiKeyChange,
     onGeminiModelIdChange,
+    onMaxAgentToolStepsChange,
     onModalApiKeyChange,
     onModalModelIdChange,
     onModalThinkingEnabledChange,
@@ -136,6 +143,36 @@ export default function SettingsView({
                         <p className="text-xs leading-5 text-[var(--text-tertiary)]">
                             O agente executara os proximos comandos com{' '}
                             {selectedProviderLabel}.
+                        </p>
+                    </div>
+
+                    <div className="mt-6 space-y-3">
+                        <label
+                            className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--text-tertiary)]"
+                            htmlFor="max-agent-tool-steps"
+                        >
+                            Limite de passos
+                        </label>
+                        <input
+                            className={fieldClassName}
+                            id="max-agent-tool-steps"
+                            inputMode="numeric"
+                            max={MAX_AGENT_TOOL_STEPS_LIMIT}
+                            min={MIN_AGENT_TOOL_STEPS}
+                            onChange={(event) =>
+                                onMaxAgentToolStepsChange(event.target.value)
+                            }
+                            placeholder={String(DEFAULT_MAX_AGENT_TOOL_STEPS)}
+                            step={1}
+                            type="number"
+                            value={maxAgentToolSteps}
+                        />
+                        <p className="text-xs leading-5 text-[var(--text-tertiary)]">
+                            Default {DEFAULT_MAX_AGENT_TOOL_STEPS}. Valores
+                            entre {MIN_AGENT_TOOL_STEPS} e{' '}
+                            {MAX_AGENT_TOOL_STEPS_LIMIT}. Limites maiores deixam
+                            tarefas longas irem mais fundo, mas podem aumentar
+                            latencia e custo.
                         </p>
                     </div>
 
@@ -301,7 +338,8 @@ export default function SettingsView({
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
                                 {provider === 'modal'
                                     ? `${selectedProviderLabel} com ${selectedModalModelLabel} em ${MODAL_BASE_URL}, thinking ${modalThinkingEnabled ? 'ligado' : 'desligado'}.`
-                                    : `${selectedProviderLabel} com ${selectedGeminiModelLabel}.`}
+                                    : `${selectedProviderLabel} com ${selectedGeminiModelLabel}.`}{' '}
+                                Limite atual: {maxAgentToolSteps} etapas.
                             </p>
                         </div>
 
@@ -311,9 +349,11 @@ export default function SettingsView({
                                 Tools web
                             </div>
                             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-                                `web_navigate`, `web_snapshot`, `web_click`,
-                                `web_type`, `web_press`, `web_wait`,
-                                `web_scroll`
+                                `web_navigate`, `web_snapshot`,
+                                `web_click_and_wait`, `web_type_and_submit`,
+                                `web_wait_for_navigation`, `web_wait_for_url`,
+                                `web_wait_for_text`, `web_wait_for_element`,
+                                `web_wait_for_results_change`
                             </p>
                         </div>
                     </div>

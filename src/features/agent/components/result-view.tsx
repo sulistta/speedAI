@@ -1,12 +1,22 @@
 import { motion } from 'framer-motion'
-import { ArrowLeft, Clock3 } from 'lucide-react'
+import {
+    ArrowLeft,
+    Clock3,
+    Gauge,
+    HardDriveDownload,
+    Workflow
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import StatusSurface from '@/features/agent/components/status-surface'
 import type {
     AgentResultSummary,
     AgentStatusEntry
 } from '@/features/agent/types'
-import { formatStatusTime } from '@/features/agent/utils'
+import {
+    formatBytes,
+    formatDurationMs,
+    formatStatusTime
+} from '@/features/agent/utils'
 
 interface ResultViewProps {
     summary: AgentResultSummary | null
@@ -67,6 +77,64 @@ export default function ResultView({ summary, onNewTask }: ResultViewProps) {
                         </p>
                     ) : null}
                 </div>
+
+                {summary?.metrics ? (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                                <Gauge className="h-3.5 w-3.5" />
+                                Latencia
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-[var(--text-primary)]">
+                                {formatDurationMs(
+                                    summary.metrics.totalDurationMs
+                                )}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                                LLM{' '}
+                                {formatDurationMs(summary.metrics.llmLatencyMs)}{' '}
+                                · tools{' '}
+                                {formatDurationMs(
+                                    summary.metrics.toolLatencyMs
+                                )}
+                            </p>
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                                <Workflow className="h-3.5 w-3.5" />
+                                Etapas
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-[var(--text-primary)]">
+                                {summary.metrics.stepCount} passos
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                                {summary.metrics.llmRoundTrips} round-trips LLM
+                                · {summary.metrics.toolCalls} tools
+                            </p>
+                        </div>
+
+                        <div className="rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
+                                <HardDriveDownload className="h-3.5 w-3.5" />
+                                Snapshot
+                            </p>
+                            <p className="mt-2 text-lg font-semibold text-[var(--text-primary)]">
+                                {formatBytes(summary.metrics.snapshotBytes)}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
+                                leitura{' '}
+                                {formatDurationMs(
+                                    summary.metrics.snapshotLatencyMs
+                                )}{' '}
+                                · settle{' '}
+                                {formatDurationMs(
+                                    summary.metrics.settleLatencyMs
+                                )}
+                            </p>
+                        </div>
+                    </div>
+                ) : null}
 
                 {actionEntries.length > 0 ? (
                     <div className="flex flex-col gap-3">

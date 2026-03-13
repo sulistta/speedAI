@@ -1,5 +1,4 @@
 import {
-    MAX_AGENT_TOOL_STEPS,
     MODAL_MAX_OUTPUT_TOKENS,
     normalizeModalModelId
 } from '@/features/agent/constants'
@@ -16,6 +15,7 @@ import {
     executeBrowserAgentAction,
     executeModalChatCompletion
 } from '@/features/agent/services/desktop-actions'
+import { createExecutionMetricsTracker } from '@/features/agent/services/execution-metrics'
 import type {
     AgentExecutionStatus,
     AgentRunResult,
@@ -83,8 +83,11 @@ export async function runModalAgentCommand(
     apiKey: string,
     modelId: string,
     thinkingEnabled: boolean,
+    maxAgentToolSteps: number,
     onStatus?: (status: AgentExecutionStatus) => void
 ): Promise<AgentRunResult> {
+    const tracker = createExecutionMetricsTracker()
+    const startedAt = Date.now()
     const cleanedInput = input.trim()
     const cleanedApiKey = apiKey.trim()
     const cleanedModelId = normalizeModalModelId(modelId)
@@ -109,21 +112,31 @@ export async function runModalAgentCommand(
         )
     }
 
-    let responseMessage = await requestModalCompletion(
-        cleanedApiKey,
-        messages,
-        cleanedModelId,
-        thinkingEnabled
-    )
+    async function requestCompletion(messagesBatch: ModalChatMessage[]) {
+        const llmStartedAt = Date.now()
+        const responseMessage = await requestModalCompletion(
+            cleanedApiKey,
+            messagesBatch,
+            cleanedModelId,
+            thinkingEnabled
+        )
 
-    for (let step = 1; step <= MAX_AGENT_TOOL_STEPS; step += 1) {
+        tracker.recordLLMCall(Date.now() - llmStartedAt)
+
+        return responseMessage
+    }
+
+    let responseMessage = await requestCompletion(messages)
+
+    for (let step = 1; step <= maxAgentToolSteps; step += 1) {
         const toolCalls = responseMessage.tool_calls ?? []
 
         if (toolCalls.length === 0) {
             if (responseMessage.content?.trim().length) {
                 return {
                     message: responseMessage.content.trim(),
-                    stepCount: step - 1
+                    stepCount: step - 1,
+                    metrics: tracker.finalize(Date.now() - startedAt, step - 1)
                 }
             }
 
@@ -152,6 +165,8 @@ export async function runModalAgentCommand(
         try {
             const executionResult =
                 await executeBrowserAgentAction(parsedToolCall)
+
+            tracker.recordToolResult(executionResult)
 
             onStatus?.({
                 tone: 'info',
@@ -182,22 +197,18 @@ export async function runModalAgentCommand(
             })
         }
 
-        responseMessage = await requestModalCompletion(
-            cleanedApiKey,
-            messages,
-            cleanedModelId,
-            thinkingEnabled
-        )
+        responseMessage = await requestCompletion(messages)
     }
 
     if (responseMessage.content?.trim().length) {
         return {
             message: responseMessage.content.trim(),
-            stepCount: MAX_AGENT_TOOL_STEPS
+            stepCount: maxAgentToolSteps,
+            metrics: tracker.finalize(Date.now() - startedAt, maxAgentToolSteps)
         }
     }
 
     throw new Error(
-        `O agente atingiu o limite de ${MAX_AGENT_TOOL_STEPS} etapas sem concluir a tarefa.`
+        `O agente atingiu o limite de ${maxAgentToolSteps} etapas sem concluir a tarefa.`
     )
 }

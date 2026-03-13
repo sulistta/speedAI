@@ -5,6 +5,7 @@ import { isTauri } from '@tauri-apps/api/core'
 import {
     DEFAULT_GEMINI_MODEL_ID,
     DEFAULT_LLM_PROVIDER,
+    DEFAULT_MAX_AGENT_TOOL_STEPS,
     DEFAULT_MODAL_MODEL_ID,
     DEFAULT_MODAL_THINKING_ENABLED
 } from '@/features/agent/constants'
@@ -66,7 +67,8 @@ const DEFAULT_SETTINGS: AgentLLMSettings = {
     geminiModelId: DEFAULT_GEMINI_MODEL_ID,
     modalApiKey: '',
     modalModelId: DEFAULT_MODAL_MODEL_ID,
-    modalThinkingEnabled: DEFAULT_MODAL_THINKING_ENABLED
+    modalThinkingEnabled: DEFAULT_MODAL_THINKING_ENABLED,
+    maxAgentToolSteps: DEFAULT_MAX_AGENT_TOOL_STEPS
 }
 
 function getConfigurationLabel(settings: AgentLLMSettings) {
@@ -83,14 +85,14 @@ function buildInitialStatus(settings: AgentLLMSettings): AgentStatusEntry {
         return createStatusEntry({
             tone: 'success',
             title: 'Agente pronto',
-            detail: `${providerLabel} ativo com ${modelLabel}.`
+            detail: `${providerLabel} ativo com ${modelLabel}. Limite atual: ${settings.maxAgentToolSteps} etapas.`
         })
     }
 
     return createStatusEntry({
         tone: 'info',
         title: `${providerLabel} ainda nao configurado`,
-        detail: `Abra Settings e salve sua API Key para habilitar a navegacao web assistida com ${modelLabel}.`
+        detail: `Abra Settings e salve sua API Key para habilitar a navegacao web assistida com ${modelLabel}. Limite atual: ${settings.maxAgentToolSteps} etapas.`
     })
 }
 
@@ -303,8 +305,8 @@ export default function AgentShell() {
             setSettingsFeedback({
                 tone: 'success',
                 message: nextConfigured
-                    ? `Configuracoes salvas com sucesso. ${savedProviderLabel} ativo com ${savedModelLabel}.`
-                    : `${savedProviderLabel} salvo com ${savedModelLabel}. API Key pendente.`
+                    ? `Configuracoes salvas com sucesso. ${savedProviderLabel} ativo com ${savedModelLabel}. Limite ${savedSettings.maxAgentToolSteps} etapas.`
+                    : `${savedProviderLabel} salvo com ${savedModelLabel}. API Key pendente. Limite ${savedSettings.maxAgentToolSteps} etapas.`
             })
 
             pushStatus(buildInitialStatus(savedSettings))
@@ -371,6 +373,7 @@ export default function AgentShell() {
                 tone: 'success',
                 title: 'Tarefa concluida',
                 detail: result.message,
+                metrics: result.metrics,
                 request: trimmedCommand,
                 providerLabel: activeProviderLabel,
                 modelLabel: activeModelLabel,
@@ -519,6 +522,9 @@ export default function AgentShell() {
                                     geminiApiKey={settingsDraft.geminiApiKey}
                                     geminiModelId={settingsDraft.geminiModelId}
                                     isSaving={isSavingSettings}
+                                    maxAgentToolSteps={
+                                        settingsDraft.maxAgentToolSteps
+                                    }
                                     modalApiKey={settingsDraft.modalApiKey}
                                     modalModelId={settingsDraft.modalModelId}
                                     modalThinkingEnabled={
@@ -537,6 +543,21 @@ export default function AgentShell() {
                                             geminiModelId: value
                                         }))
                                     }
+                                    onMaxAgentToolStepsChange={(value) => {
+                                        const parsedValue = Number.parseInt(
+                                            value,
+                                            10
+                                        )
+
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            maxAgentToolSteps: Number.isNaN(
+                                                parsedValue
+                                            )
+                                                ? DEFAULT_MAX_AGENT_TOOL_STEPS
+                                                : parsedValue
+                                        }))
+                                    }}
                                     onModalApiKeyChange={(value) =>
                                         setSettingsDraft((current) => ({
                                             ...current,
