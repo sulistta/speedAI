@@ -44,6 +44,7 @@ struct BrowserAgentRequest {
     minimum_change: Option<u32>,
     wait_for_text: Option<String>,
     wait_for_url: Option<String>,
+    visual_overlay_enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -127,6 +128,7 @@ struct BrowserAgentActionResult {
     snapshot: BrowserPageSnapshot,
     readiness: BrowserAgentReadiness,
     metrics: BrowserAgentMetrics,
+    highlighted_target_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

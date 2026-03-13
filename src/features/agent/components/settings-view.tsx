@@ -41,6 +41,8 @@ interface SettingsViewProps {
     onProviderChange: (value: LLMProvider) => void
     onSave: () => void
     provider: LLMProvider
+    visualOverlayEnabled: boolean
+    onVisualOverlayEnabledChange: (value: boolean) => void
 }
 
 const feedbackToneClasses: Record<SettingsFeedback['tone'], string> = {
@@ -72,7 +74,9 @@ export default function SettingsView({
     onModalThinkingEnabledChange,
     onProviderChange,
     onSave,
-    provider
+    provider,
+    visualOverlayEnabled,
+    onVisualOverlayEnabledChange
 }: SettingsViewProps) {
     const selectedProviderLabel = getLLMProviderLabel(provider)
     const normalizedGeminiApiKey = geminiApiKey.trim()
@@ -174,6 +178,37 @@ export default function SettingsView({
                             tarefas longas irem mais fundo, mas podem aumentar
                             latencia e custo.
                         </p>
+                    </div>
+
+                    <div className="mt-6 rounded-[1.35rem] border border-[var(--surface-stroke)] bg-[var(--input-surface)] p-4">
+                        <label
+                            className="flex cursor-pointer items-start gap-3"
+                            htmlFor="visual-overlay-enabled"
+                        >
+                            <input
+                                checked={visualOverlayEnabled}
+                                className="mt-1 h-4 w-4 rounded border border-[var(--surface-stroke-strong)] accent-[var(--accent)]"
+                                id="visual-overlay-enabled"
+                                onChange={(event) =>
+                                    onVisualOverlayEnabledChange(
+                                        event.target.checked
+                                    )
+                                }
+                                type="checkbox"
+                            />
+
+                            <span className="min-w-0">
+                                <span className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                                    <Sparkles className="h-4 w-4" />
+                                    Highlight visual no navegador
+                                </span>
+                                <span className="mt-2 block text-sm leading-6 text-[var(--text-secondary)]">
+                                    {visualOverlayEnabled
+                                        ? 'Ligado. O browser mostra bordas e IDs no elemento que o agente acabou de usar.'
+                                        : 'Desligado. O agente continua lendo os elementos semanticamente, sem desenhar a overlay de debug.'}
+                                </span>
+                            </span>
+                        </label>
                     </div>
 
                     {provider === 'modal' ? (
@@ -340,6 +375,10 @@ export default function SettingsView({
                                     ? `${selectedProviderLabel} com ${selectedModalModelLabel} em ${MODAL_BASE_URL}, thinking ${modalThinkingEnabled ? 'ligado' : 'desligado'}.`
                                     : `${selectedProviderLabel} com ${selectedGeminiModelLabel}.`}{' '}
                                 Limite atual: {maxAgentToolSteps} etapas.
+                                Overlay{' '}
+                                {visualOverlayEnabled
+                                    ? ' ligada.'
+                                    : ' desligada.'}
                             </p>
                         </div>
 

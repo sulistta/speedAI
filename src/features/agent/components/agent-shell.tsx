@@ -7,7 +7,8 @@ import {
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_AGENT_TOOL_STEPS,
     DEFAULT_MODAL_MODEL_ID,
-    DEFAULT_MODAL_THINKING_ENABLED
+    DEFAULT_MODAL_THINKING_ENABLED,
+    DEFAULT_VISUAL_OVERLAY_ENABLED
 } from '@/features/agent/constants'
 import MainView from '@/features/agent/components/main-view'
 import ResultView from '@/features/agent/components/result-view'
@@ -68,7 +69,8 @@ const DEFAULT_SETTINGS: AgentLLMSettings = {
     modalApiKey: '',
     modalModelId: DEFAULT_MODAL_MODEL_ID,
     modalThinkingEnabled: DEFAULT_MODAL_THINKING_ENABLED,
-    maxAgentToolSteps: DEFAULT_MAX_AGENT_TOOL_STEPS
+    maxAgentToolSteps: DEFAULT_MAX_AGENT_TOOL_STEPS,
+    visualOverlayEnabled: DEFAULT_VISUAL_OVERLAY_ENABLED
 }
 
 function getConfigurationLabel(settings: AgentLLMSettings) {
@@ -578,7 +580,16 @@ export default function AgentShell() {
                                     }
                                     onProviderChange={handleProviderDraftChange}
                                     onSave={() => void handleSaveSettings()}
+                                    onVisualOverlayEnabledChange={(value) =>
+                                        setSettingsDraft((current) => ({
+                                            ...current,
+                                            visualOverlayEnabled: value
+                                        }))
+                                    }
                                     provider={settingsDraft.provider}
+                                    visualOverlayEnabled={
+                                        settingsDraft.visualOverlayEnabled
+                                    }
                                 />
                             )}
                         </motion.div>

@@ -84,6 +84,7 @@ export async function runModalAgentCommand(
     modelId: string,
     thinkingEnabled: boolean,
     maxAgentToolSteps: number,
+    visualOverlayEnabled: boolean,
     onStatus?: (status: AgentExecutionStatus) => void
 ): Promise<AgentRunResult> {
     const tracker = createExecutionMetricsTracker()
@@ -163,8 +164,10 @@ export async function runModalAgentCommand(
         onStatus?.(describeAction(parsedToolCall))
 
         try {
-            const executionResult =
-                await executeBrowserAgentAction(parsedToolCall)
+            const executionResult = await executeBrowserAgentAction({
+                ...parsedToolCall,
+                visualOverlayEnabled
+            })
 
             tracker.recordToolResult(executionResult)
 

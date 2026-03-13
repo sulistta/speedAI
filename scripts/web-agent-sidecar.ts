@@ -16,75 +16,91 @@ interface BrowserSnapshotOptions {
     focusText?: string
 }
 
+interface BrowserVisualOptions {
+    visualOverlayEnabled?: boolean
+}
+
 type BrowserAgentRequest =
     | ({
           id: string
           action: 'navigate'
           url: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'snapshot'
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'click'
           targetId: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'type'
           targetId: string
           text: string
           submit?: boolean
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'press'
           key: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'wait'
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'waitForNavigation'
           timeoutMs?: number
           urlIncludes?: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'waitForUrl'
           url: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'waitForText'
           text: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'waitForElement'
           targetId?: string
           text?: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'waitForResultsChange'
           timeoutMs?: number
           minimumChange?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'scroll'
           direction: 'up' | 'down'
           amount?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'clickAndWait'
@@ -92,7 +108,8 @@ type BrowserAgentRequest =
           waitForText?: string
           waitForUrl?: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           id: string
           action: 'typeAndSubmit'
@@ -101,7 +118,8 @@ type BrowserAgentRequest =
           waitForText?: string
           waitForUrl?: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
 
 interface BrowserSnapshotHeading {
     tag: string
@@ -162,6 +180,7 @@ interface BrowserAgentActionResult {
     snapshot: BrowserPageSnapshot
     readiness: BrowserAgentReadiness
     metrics: BrowserAgentMetrics
+    highlightedTargetId?: string
 }
 
 interface BrowserAgentResponse {
@@ -212,6 +231,9 @@ const MAX_REGIONS = 6
 const MAX_ELEMENTS = 32
 const MAX_REGION_TEXT_LENGTH = 180
 const MAX_ELEMENT_TEXT_LENGTH = 120
+const TARGET_ID_ATTRIBUTE = 'data-speedai-target-id'
+const ACTIVE_TARGET_MARKER_ATTRIBUTE = 'data-speedai-active-target-marker'
+const VISUAL_OVERLAY_ROOT_ID = 'speedai-visual-overlay-root'
 
 let context: BrowserContext | null = null
 let activePage: Page | null = null
@@ -398,7 +420,7 @@ async function ensurePage() {
 
 async function resolveTarget(page: Page, targetId: string) {
     const locator = page
-        .locator(`[data-speedai-target-id="${targetId}"]`)
+        .locator(`[${TARGET_ID_ATTRIBUTE}="${targetId}"]`)
         .first()
 
     if ((await locator.count()) === 0) {
@@ -422,6 +444,442 @@ async function fillLocator(page: Page, locator: Locator, text: string) {
         await locator.press('Delete').catch(() => undefined)
         await page.keyboard.insertText(text)
     }
+}
+
+function getRequestedHighlightTargetId(request: BrowserAgentRequest) {
+    switch (request.action) {
+        case 'click':
+        case 'type':
+        case 'clickAndWait':
+        case 'typeAndSubmit':
+            return request.targetId
+        case 'waitForElement':
+            return request.targetId
+        default:
+            return undefined
+    }
+}
+
+async function clearVisualOverlay(page: Page) {
+    await page.evaluate(
+        ({ overlayRootId }) => {
+            type OverlayState = {
+                mutationObserver?: MutationObserver
+                resizeObserver?: ResizeObserver
+                removeListeners: Array<() => void>
+                frameId?: number
+                root: HTMLDivElement
+            }
+
+            type OverlayHostWindow = Window & {
+                __speedaiVisualOverlayState?: OverlayState
+            }
+
+            const hostWindow = window as OverlayHostWindow
+            const state = hostWindow.__speedaiVisualOverlayState
+
+            if (state?.frameId !== undefined) {
+                window.cancelAnimationFrame(state.frameId)
+            }
+
+            state?.mutationObserver?.disconnect()
+            state?.resizeObserver?.disconnect()
+            state?.removeListeners.forEach((removeListener) => removeListener())
+
+            delete hostWindow.__speedaiVisualOverlayState
+
+            document.getElementById(overlayRootId)?.remove()
+        },
+        {
+            overlayRootId: VISUAL_OVERLAY_ROOT_ID
+        }
+    )
+}
+
+async function clearActiveTargetMarker(page: Page) {
+    await page.evaluate((activeTargetMarkerAttribute) => {
+        document
+            .querySelectorAll(`[${activeTargetMarkerAttribute}]`)
+            .forEach((element) =>
+                element.removeAttribute(activeTargetMarkerAttribute)
+            )
+    }, ACTIVE_TARGET_MARKER_ATTRIBUTE)
+}
+
+async function markActiveTargetMarker(locator: Locator) {
+    await locator.evaluate((element, activeTargetMarkerAttribute) => {
+        element.setAttribute(activeTargetMarkerAttribute, 'true')
+    }, ACTIVE_TARGET_MARKER_ATTRIBUTE)
+}
+
+async function prepareActiveTargetMarker(
+    page: Page,
+    request: BrowserAgentRequest,
+    locator?: Locator
+) {
+    await clearActiveTargetMarker(page)
+
+    const targetId = getRequestedHighlightTargetId(request)
+
+    if (targetId === undefined || locator === undefined) {
+        return
+    }
+
+    await markActiveTargetMarker(locator)
+}
+
+async function renderSnapshotVisualOverlay(
+    page: Page,
+    snapshot: BrowserPageSnapshot,
+    highlightedTargetId?: string
+) {
+    return await page.evaluate(
+        ({
+            overlayRootId,
+            targetIdAttribute,
+            snapshotTargetIds,
+            highlightedTargetId
+        }) => {
+            type OverlayItem = {
+                targetId: string
+                isActive: boolean
+                box: HTMLDivElement
+                badge: HTMLDivElement
+            }
+
+            type OverlayState = {
+                mutationObserver?: MutationObserver
+                resizeObserver?: ResizeObserver
+                removeListeners: Array<() => void>
+                frameId?: number
+                root: HTMLDivElement
+                items: OverlayItem[]
+                scheduleUpdate: () => void
+                refreshObservedTargets: () => void
+            }
+
+            type OverlayHostWindow = Window & {
+                __speedaiVisualOverlayState?: OverlayState
+            }
+
+            const hostWindow = window as OverlayHostWindow
+            const resolvedHighlightedTargetId = snapshotTargetIds.includes(
+                highlightedTargetId ?? ''
+            )
+                ? highlightedTargetId
+                : undefined
+
+            function findTargetElement(targetId: string) {
+                const targetElement = document.querySelector(
+                    `[${targetIdAttribute}="${targetId}"]`
+                )
+
+                return targetElement instanceof HTMLElement
+                    ? targetElement
+                    : null
+            }
+
+            function buildOverlayRoot() {
+                const root = document.createElement('div')
+                root.id = overlayRootId
+                root.setAttribute('aria-hidden', 'true')
+                root.style.position = 'fixed'
+                root.style.inset = '0'
+                root.style.pointerEvents = 'none'
+                root.style.zIndex = '2147483647'
+                document.documentElement.append(root)
+
+                return root
+            }
+
+            function buildOverlayItem(
+                targetId: string,
+                isActive: boolean
+            ): OverlayItem {
+                const box = document.createElement('div')
+                box.dataset.speedaiTargetId = targetId
+                box.style.position = 'fixed'
+                box.style.borderRadius = isActive ? '16px' : '14px'
+                box.style.opacity = '0'
+                box.style.transition =
+                    'transform 120ms ease, width 120ms ease, height 120ms ease, opacity 120ms ease'
+
+                const badge = document.createElement('div')
+                badge.dataset.speedaiTargetId = targetId
+                badge.textContent = targetId
+                badge.style.position = 'fixed'
+                badge.style.padding = isActive ? '4px 9px' : '3px 8px'
+                badge.style.borderRadius = '999px'
+                badge.style.opacity = '0'
+                badge.style.whiteSpace = 'nowrap'
+                badge.style.font =
+                    '600 12px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace'
+                badge.style.letterSpacing = '0.04em'
+                badge.style.transition =
+                    'transform 120ms ease, opacity 120ms ease'
+
+                if (isActive) {
+                    box.style.border = '2px solid rgba(14, 165, 233, 0.98)'
+                    box.style.background = 'rgba(14, 165, 233, 0.12)'
+                    box.style.boxShadow =
+                        '0 0 0 1px rgba(255,255,255,0.35), 0 18px 45px -24px rgba(14,165,233,0.95)'
+                    badge.style.background = 'rgba(2, 6, 23, 0.94)'
+                    badge.style.border = '1px solid rgba(125, 211, 252, 0.58)'
+                    badge.style.boxShadow =
+                        '0 14px 30px -18px rgba(2, 6, 23, 0.95)'
+                    badge.style.color = 'white'
+                } else {
+                    box.style.border = '1px solid rgba(148, 163, 184, 0.72)'
+                    box.style.background = 'rgba(148, 163, 184, 0.08)'
+                    box.style.boxShadow =
+                        '0 10px 28px -22px rgba(15, 23, 42, 0.72)'
+                    badge.style.background = 'rgba(15, 23, 42, 0.78)'
+                    badge.style.border = '1px solid rgba(148, 163, 184, 0.42)'
+                    badge.style.boxShadow =
+                        '0 10px 24px -18px rgba(15, 23, 42, 0.78)'
+                    badge.style.color = 'rgba(226, 232, 240, 0.96)'
+                }
+
+                return {
+                    targetId,
+                    isActive,
+                    box,
+                    badge
+                }
+            }
+
+            function hideOverlayItem(item: OverlayItem) {
+                item.box.style.opacity = '0'
+                item.badge.style.opacity = '0'
+            }
+
+            function createState() {
+                const root = buildOverlayRoot()
+                const nextState: OverlayState = {
+                    root,
+                    items: [],
+                    removeListeners: [],
+                    scheduleUpdate: () => undefined,
+                    refreshObservedTargets: () => undefined
+                }
+
+                nextState.refreshObservedTargets = () => {
+                    if (typeof ResizeObserver !== 'function') {
+                        return
+                    }
+
+                    if (nextState.resizeObserver === undefined) {
+                        nextState.resizeObserver = new ResizeObserver(() => {
+                            nextState.scheduleUpdate()
+                        })
+                    }
+
+                    nextState.resizeObserver.disconnect()
+
+                    for (const item of nextState.items) {
+                        const targetElement = findTargetElement(item.targetId)
+
+                        if (targetElement !== null) {
+                            nextState.resizeObserver.observe(targetElement)
+                        }
+                    }
+                }
+
+                nextState.scheduleUpdate = () => {
+                    if (nextState.frameId !== undefined) {
+                        window.cancelAnimationFrame(nextState.frameId)
+                    }
+
+                    nextState.frameId = window.requestAnimationFrame(() => {
+                        nextState.frameId = undefined
+
+                        for (const item of nextState.items) {
+                            const targetElement = findTargetElement(
+                                item.targetId
+                            )
+
+                            if (targetElement === null) {
+                                hideOverlayItem(item)
+                                continue
+                            }
+
+                            const rect = targetElement.getBoundingClientRect()
+
+                            if (
+                                rect.width < 1 ||
+                                rect.height < 1 ||
+                                rect.bottom < 0 ||
+                                rect.top > window.innerHeight ||
+                                rect.right < 0 ||
+                                rect.left > window.innerWidth
+                            ) {
+                                hideOverlayItem(item)
+                                continue
+                            }
+
+                            const outlineInset = item.isActive ? 4 : 2
+                            const boxTop = Math.max(rect.top - outlineInset, 4)
+                            const boxLeft = Math.max(
+                                rect.left - outlineInset,
+                                4
+                            )
+                            const boxWidth = Math.min(
+                                rect.width + outlineInset * 2,
+                                window.innerWidth - boxLeft - 4
+                            )
+                            const boxHeight = Math.min(
+                                rect.height + outlineInset * 2,
+                                window.innerHeight - boxTop - 4
+                            )
+
+                            item.box.style.opacity = '1'
+                            item.box.style.transform = `translate(${boxLeft}px, ${boxTop}px)`
+                            item.box.style.width = `${boxWidth}px`
+                            item.box.style.height = `${boxHeight}px`
+
+                            const badgeRect = item.badge.getBoundingClientRect()
+                            const preferredBadgeTop =
+                                boxTop - badgeRect.height - 8
+                            const badgeTop =
+                                preferredBadgeTop >= 4
+                                    ? preferredBadgeTop
+                                    : Math.min(
+                                          boxTop + 6,
+                                          window.innerHeight -
+                                              badgeRect.height -
+                                              4
+                                      )
+                            const badgeLeft = Math.min(
+                                Math.max(boxLeft + 6, 8),
+                                window.innerWidth - badgeRect.width - 8
+                            )
+
+                            item.badge.style.opacity = '1'
+                            item.badge.style.transform = `translate(${badgeLeft}px, ${badgeTop}px)`
+                        }
+                    })
+                }
+
+                const subscribe = (
+                    target: Window | Document | VisualViewport,
+                    eventName: string
+                ) => {
+                    target.addEventListener(
+                        eventName,
+                        nextState.scheduleUpdate,
+                        {
+                            passive: true
+                        }
+                    )
+                    nextState.removeListeners.push(() =>
+                        target.removeEventListener(
+                            eventName,
+                            nextState.scheduleUpdate
+                        )
+                    )
+                }
+
+                subscribe(window, 'scroll')
+                subscribe(window, 'resize')
+                subscribe(document, 'visibilitychange')
+
+                if (window.visualViewport) {
+                    subscribe(window.visualViewport, 'resize')
+                    subscribe(window.visualViewport, 'scroll')
+                }
+
+                nextState.mutationObserver = new MutationObserver(
+                    (mutations) => {
+                        const hasExternalMutation = mutations.some(
+                            (mutation) =>
+                                !nextState.root.contains(mutation.target)
+                        )
+
+                        if (hasExternalMutation) {
+                            nextState.refreshObservedTargets()
+                            nextState.scheduleUpdate()
+                        }
+                    }
+                )
+                nextState.mutationObserver.observe(
+                    document.body ?? document.documentElement,
+                    {
+                        attributes: true,
+                        childList: true,
+                        subtree: true
+                    }
+                )
+
+                return nextState
+            }
+
+            function reconcileOverlayItems(
+                state: OverlayState,
+                targets: Array<{
+                    targetId: string
+                    isActive: boolean
+                }>
+            ) {
+                state.root.replaceChildren()
+                state.items = targets.map((target) => {
+                    const item = buildOverlayItem(
+                        target.targetId,
+                        target.isActive
+                    )
+                    state.root.append(item.box, item.badge)
+
+                    return item
+                })
+            }
+
+            let state = hostWindow.__speedaiVisualOverlayState
+
+            if (
+                state === undefined ||
+                !state.root.isConnected ||
+                !document.documentElement.contains(state.root)
+            ) {
+                if (state?.frameId !== undefined) {
+                    window.cancelAnimationFrame(state.frameId)
+                }
+
+                state?.mutationObserver?.disconnect()
+                state?.resizeObserver?.disconnect()
+                state?.removeListeners.forEach((removeListener) =>
+                    removeListener()
+                )
+
+                state = createState()
+                hostWindow.__speedaiVisualOverlayState = state
+            }
+
+            reconcileOverlayItems(
+                state,
+                snapshotTargetIds.map((targetId) => ({
+                    targetId,
+                    isActive: targetId === resolvedHighlightedTargetId
+                }))
+            )
+            state.refreshObservedTargets()
+            state.scheduleUpdate()
+
+            return new Promise<string | undefined>((resolve) => {
+                window.requestAnimationFrame(() => {
+                    window.requestAnimationFrame(() => {
+                        resolve(resolvedHighlightedTargetId)
+                    })
+                })
+            })
+        },
+        {
+            overlayRootId: VISUAL_OVERLAY_ROOT_ID,
+            targetIdAttribute: TARGET_ID_ATTRIBUTE,
+            snapshotTargetIds: snapshot.elements.map(
+                (element) => element.targetId
+            ),
+            highlightedTargetId
+        }
+    )
 }
 
 function createSnapshotView(
@@ -670,17 +1128,27 @@ function applySnapshotMode(
     }
 }
 
-async function captureRawSnapshot(page: Page): Promise<BrowserPageSnapshot> {
-    const rawSnapshot = await page.evaluate(
+async function captureRawSnapshot(page: Page) {
+    return await page.evaluate(
         ({
             interactiveSelector,
             regionSelector,
+            targetIdAttribute,
+            activeTargetMarkerAttribute,
             maxElements,
             maxHeadings,
             maxRegions,
             maxRegionTextLength,
             maxElementTextLength
         }) => {
+            let activeTargetId: string | undefined
+
+            document
+                .querySelectorAll(`[${targetIdAttribute}]`)
+                .forEach((element) => {
+                    element.removeAttribute(targetIdAttribute)
+                })
+
             const normalizeWhitespace = (value: string) =>
                 value.replace(/\s+/g, ' ').trim()
             const truncate = (value: string, length: number) => {
@@ -938,12 +1406,6 @@ async function captureRawSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                 return score
             }
 
-            for (const element of document.querySelectorAll(
-                '[data-speedai-target-id]'
-            )) {
-                element.removeAttribute('data-speedai-target-id')
-            }
-
             const headings = Array.from(
                 document.querySelectorAll('h1, h2, h3, h4, h5, h6')
             )
@@ -1103,10 +1565,15 @@ async function captureRawSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                 })
                 .map((candidate, index) => {
                     const targetId = `t${index + 1}`
-                    candidate.element.setAttribute(
-                        'data-speedai-target-id',
-                        targetId
-                    )
+                    candidate.element.setAttribute(targetIdAttribute, targetId)
+
+                    if (
+                        candidate.element.hasAttribute(
+                            activeTargetMarkerAttribute
+                        )
+                    ) {
+                        activeTargetId = targetId
+                    }
 
                     return {
                         targetId,
@@ -1121,19 +1588,30 @@ async function captureRawSnapshot(page: Page): Promise<BrowserPageSnapshot> {
                     }
                 })
 
+            document
+                .querySelectorAll(`[${activeTargetMarkerAttribute}]`)
+                .forEach((element) => {
+                    element.removeAttribute(activeTargetMarkerAttribute)
+                })
+
             return {
-                title: document.title || 'Untitled page',
-                url: window.location.href,
-                headings,
-                regions,
-                elements,
-                mode: 'full' as const,
-                generatedAt: new Date().toISOString()
+                rawSnapshot: {
+                    title: document.title || 'Untitled page',
+                    url: window.location.href,
+                    headings,
+                    regions,
+                    elements,
+                    mode: 'full' as const,
+                    generatedAt: new Date().toISOString()
+                },
+                activeTargetId
             }
         },
         {
             interactiveSelector: INTERACTIVE_SELECTOR,
             regionSelector: REGION_SELECTOR,
+            targetIdAttribute: TARGET_ID_ATTRIBUTE,
+            activeTargetMarkerAttribute: ACTIVE_TARGET_MARKER_ATTRIBUTE,
             maxElements: MAX_ELEMENTS,
             maxHeadings: MAX_HEADINGS,
             maxRegions: MAX_REGIONS,
@@ -1141,8 +1619,6 @@ async function captureRawSnapshot(page: Page): Promise<BrowserPageSnapshot> {
             maxElementTextLength: MAX_ELEMENT_TEXT_LENGTH
         }
     )
-
-    return rawSnapshot
 }
 
 async function captureSnapshot(
@@ -1154,7 +1630,7 @@ async function captureSnapshot(
         lastRawSnapshot && lastRawSnapshot.url === page.url()
             ? lastRawSnapshot
             : null
-    const rawSnapshot = await captureRawSnapshot(page)
+    const { rawSnapshot, activeTargetId } = await captureRawSnapshot(page)
     const snapshotMode = resolveSnapshotMode(options.snapshotMode, fallbackMode)
     const snapshot = applySnapshotMode(
         rawSnapshot,
@@ -1167,7 +1643,8 @@ async function captureSnapshot(
 
     return {
         rawSnapshot,
-        snapshot
+        snapshot,
+        activeTargetId
     }
 }
 
@@ -1218,19 +1695,28 @@ async function finalizeActionResult(
     fallbackSnapshotMode: BrowserSnapshotMode
 ): Promise<BrowserAgentActionResult> {
     const snapshotStartedAt = Date.now()
-    const { rawSnapshot, snapshot } = await captureSnapshot(
+    const { rawSnapshot, snapshot, activeTargetId } = await captureSnapshot(
         page,
         request,
         fallbackSnapshotMode
     )
     const snapshotDurationMs = Date.now() - snapshotStartedAt
     const actionDurationMs = Date.now() - context.startedAt
+    const highlightedTargetId =
+        request.visualOverlayEnabled === true
+            ? await renderSnapshotVisualOverlay(page, snapshot, activeTargetId)
+            : undefined
+
+    if (request.visualOverlayEnabled !== true) {
+        await clearVisualOverlay(page)
+    }
 
     return {
         action: request.action,
         status,
         detail,
         snapshot,
+        highlightedTargetId,
         readiness: buildReadiness(
             context.beforeUrl,
             context.beforeSnapshot,
@@ -1491,6 +1977,7 @@ async function handleNavigateAction(
     request: Extract<BrowserAgentRequest, { action: 'navigate' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const nextUrl = normalizeUrl(request.url)
     const settleStartedAt = Date.now()
@@ -1515,6 +2002,7 @@ async function handleSnapshotAction(
     request: Extract<BrowserAgentRequest, { action: 'snapshot' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
 
     return finalizeActionResult(
@@ -1532,8 +2020,9 @@ async function handleClickAction(
     request: Extract<BrowserAgentRequest, { action: 'click' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
-    const actionContext = beginAction(page)
     const locator = await resolveTarget(page, request.targetId)
+    await prepareActiveTargetMarker(page, request, locator)
+    const actionContext = beginAction(page)
     const settleStartedAt = Date.now()
 
     await locator.click()
@@ -1554,8 +2043,9 @@ async function handleTypeAction(
     request: Extract<BrowserAgentRequest, { action: 'type' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
-    const actionContext = beginAction(page)
     const locator = await resolveTarget(page, request.targetId)
+    await prepareActiveTargetMarker(page, request, locator)
+    const actionContext = beginAction(page)
     const settleStartedAt = Date.now()
 
     await fillLocator(page, locator, request.text)
@@ -1581,6 +2071,7 @@ async function handlePressAction(
     request: Extract<BrowserAgentRequest, { action: 'press' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const settleStartedAt = Date.now()
 
@@ -1602,6 +2093,7 @@ async function handleWaitAction(
     request: Extract<BrowserAgentRequest, { action: 'wait' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
@@ -1624,6 +2116,7 @@ async function handleWaitForNavigationAction(
     request: Extract<BrowserAgentRequest, { action: 'waitForNavigation' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
@@ -1658,6 +2151,7 @@ async function handleWaitForUrlAction(
     request: Extract<BrowserAgentRequest, { action: 'waitForUrl' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
@@ -1683,6 +2177,7 @@ async function handleWaitForTextAction(
     request: Extract<BrowserAgentRequest, { action: 'waitForText' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
@@ -1709,6 +2204,7 @@ async function handleWaitForElementAction(
     request: Extract<BrowserAgentRequest, { action: 'waitForElement' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
@@ -1721,6 +2217,11 @@ async function handleWaitForElementAction(
         )
     })
     await settlePage(page, 0)
+
+    if (request.targetId !== undefined) {
+        const locator = await resolveTarget(page, request.targetId)
+        await prepareActiveTargetMarker(page, request, locator)
+    }
 
     return finalizeActionResult(
         request,
@@ -1739,6 +2240,7 @@ async function handleWaitForResultsChangeAction(
     request: Extract<BrowserAgentRequest, { action: 'waitForResultsChange' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const minimumChange = Math.max(1, clampNumber(request.minimumChange, 1, 24))
@@ -1766,6 +2268,7 @@ async function handleScrollAction(
     request: Extract<BrowserAgentRequest, { action: 'scroll' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
+    await prepareActiveTargetMarker(page, request)
     const actionContext = beginAction(page)
     const amount = clampNumber(request.amount, 480, 1600)
     const deltaY = request.direction === 'down' ? amount : amount * -1
@@ -1789,8 +2292,9 @@ async function handleClickAndWaitAction(
     request: Extract<BrowserAgentRequest, { action: 'clickAndWait' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
-    const actionContext = beginAction(page)
     const locator = await resolveTarget(page, request.targetId)
+    await prepareActiveTargetMarker(page, request, locator)
+    const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
 
@@ -1822,8 +2326,9 @@ async function handleTypeAndSubmitAction(
     request: Extract<BrowserAgentRequest, { action: 'typeAndSubmit' }>
 ): Promise<BrowserAgentActionResult> {
     const page = await ensurePage()
-    const actionContext = beginAction(page)
     const locator = await resolveTarget(page, request.targetId)
+    await prepareActiveTargetMarker(page, request, locator)
+    const actionContext = beginAction(page)
     const timeoutMs = resolveTimeoutMs(request.timeoutMs)
     const settleStartedAt = Date.now()
 

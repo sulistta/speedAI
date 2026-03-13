@@ -20,6 +20,7 @@ export interface AgentLLMSettings {
     modalModelId: string
     modalThinkingEnabled: boolean
     maxAgentToolSteps: number
+    visualOverlayEnabled: boolean
 }
 
 export interface ModalToolCall {
@@ -91,6 +92,10 @@ export interface BrowserSnapshotOptions {
     focusText?: string
 }
 
+export interface BrowserVisualOptions {
+    visualOverlayEnabled?: boolean
+}
+
 export interface BrowserSnapshotHeading {
     tag: string
     text: string
@@ -129,66 +134,79 @@ export type BrowserAgentAction =
     | ({
           action: 'navigate'
           url: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'snapshot'
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'click'
           targetId: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'type'
           targetId: string
           text: string
           submit?: boolean
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'press'
           key: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'wait'
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'waitForNavigation'
           timeoutMs?: number
           urlIncludes?: string
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'waitForUrl'
           url: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'waitForText'
           text: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'waitForElement'
           targetId?: string
           text?: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'waitForResultsChange'
           timeoutMs?: number
           minimumChange?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'scroll'
           direction: 'up' | 'down'
           amount?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'clickAndWait'
           targetId: string
           waitForText?: string
           waitForUrl?: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
     | ({
           action: 'typeAndSubmit'
           targetId: string
@@ -196,7 +214,8 @@ export type BrowserAgentAction =
           waitForText?: string
           waitForUrl?: string
           timeoutMs?: number
-      } & BrowserSnapshotOptions)
+      } & BrowserSnapshotOptions &
+          BrowserVisualOptions)
 
 export interface BrowserAgentReadiness {
     state: 'stable' | 'changed'
@@ -223,6 +242,7 @@ export interface BrowserAgentActionResult {
     snapshot: BrowserPageSnapshot
     readiness: BrowserAgentReadiness
     metrics: BrowserAgentMetrics
+    highlightedTargetId?: string
 }
 
 export interface AgentExecutionMetrics {

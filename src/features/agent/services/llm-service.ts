@@ -39,6 +39,7 @@ export async function runAgentCommand(
             settings.modalModelId,
             settings.modalThinkingEnabled,
             settings.maxAgentToolSteps,
+            settings.visualOverlayEnabled,
             onStatus
         )
     }
@@ -48,6 +49,7 @@ export async function runAgentCommand(
         settings.geminiApiKey,
         settings.geminiModelId,
         settings.maxAgentToolSteps,
+        settings.visualOverlayEnabled,
         onStatus
     )
 }

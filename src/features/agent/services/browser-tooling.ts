@@ -885,6 +885,7 @@ export function buildToolResponsePayload(
             detail: result.detail,
             readiness: result.readiness,
             metrics: result.metrics,
+            highlightedTargetId: result.highlightedTargetId,
             page: {
                 title: result.snapshot.title,
                 url: result.snapshot.url,

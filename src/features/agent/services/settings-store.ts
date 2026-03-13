@@ -6,6 +6,7 @@ import {
     BROWSER_GEMINI_MODEL_STORAGE_KEY,
     BROWSER_LLM_PROVIDER_STORAGE_KEY,
     BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
+    BROWSER_VISUAL_OVERLAY_STORAGE_KEY,
     BROWSER_MODAL_API_KEY_STORAGE_KEY,
     BROWSER_MODAL_MODEL_STORAGE_KEY,
     BROWSER_MODAL_THINKING_STORAGE_KEY,
@@ -15,6 +16,7 @@ import {
     GEMINI_MODEL_STORAGE_KEY,
     LLM_PROVIDER_STORAGE_KEY,
     MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
+    VISUAL_OVERLAY_STORAGE_KEY,
     MODAL_API_KEY_STORAGE_KEY,
     MODAL_MODEL_STORAGE_KEY,
     MODAL_THINKING_STORAGE_KEY,
@@ -22,7 +24,8 @@ import {
     normalizeLLMProvider,
     normalizeMaxAgentToolSteps,
     normalizeModalThinkingEnabled,
-    normalizeModalModelId
+    normalizeModalModelId,
+    normalizeVisualOverlayEnabled
 } from '@/features/agent/constants'
 import type { AgentLLMSettings } from '@/features/agent/types'
 
@@ -41,12 +44,16 @@ function normalizeSettings(
         | (Partial<
               Omit<
                   AgentLLMSettings,
-                  'provider' | 'modalThinkingEnabled' | 'maxAgentToolSteps'
+                  | 'provider'
+                  | 'modalThinkingEnabled'
+                  | 'maxAgentToolSteps'
+                  | 'visualOverlayEnabled'
               >
           > & {
               provider?: string | null
               modalThinkingEnabled?: boolean | string | null
               maxAgentToolSteps?: number | string | null
+              visualOverlayEnabled?: boolean | string | null
           })
         | null
         | undefined
@@ -62,6 +69,9 @@ function normalizeSettings(
         ),
         maxAgentToolSteps: normalizeMaxAgentToolSteps(
             settings?.maxAgentToolSteps
+        ),
+        visualOverlayEnabled: normalizeVisualOverlayEnabled(
+            settings?.visualOverlayEnabled
         )
     }
 }
@@ -90,7 +100,10 @@ export async function loadLLMSettings(): Promise<AgentLLMSettings> {
             maxAgentToolSteps:
                 window.localStorage.getItem(
                     BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY
-                ) ?? DEFAULT_MAX_AGENT_TOOL_STEPS
+                ) ?? DEFAULT_MAX_AGENT_TOOL_STEPS,
+            visualOverlayEnabled: window.localStorage.getItem(
+                BROWSER_VISUAL_OVERLAY_STORAGE_KEY
+            )
         })
     }
 
@@ -107,6 +120,9 @@ export async function loadLLMSettings(): Promise<AgentLLMSettings> {
         ),
         maxAgentToolSteps: await store.get<number | string>(
             MAX_AGENT_TOOL_STEPS_STORAGE_KEY
+        ),
+        visualOverlayEnabled: await store.get<boolean | string>(
+            VISUAL_OVERLAY_STORAGE_KEY
         )
     })
 }
@@ -157,6 +173,10 @@ export async function saveLLMSettings(
             BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
             String(nextSettings.maxAgentToolSteps)
         )
+        window.localStorage.setItem(
+            BROWSER_VISUAL_OVERLAY_STORAGE_KEY,
+            String(nextSettings.visualOverlayEnabled)
+        )
 
         return nextSettings
     }
@@ -187,6 +207,10 @@ export async function saveLLMSettings(
     await store.set(
         MAX_AGENT_TOOL_STEPS_STORAGE_KEY,
         nextSettings.maxAgentToolSteps
+    )
+    await store.set(
+        VISUAL_OVERLAY_STORAGE_KEY,
+        nextSettings.visualOverlayEnabled
     )
 
     await store.save()

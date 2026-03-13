@@ -42,6 +42,7 @@ export async function runGeminiAgentCommand(
     apiKey: string,
     modelId: string,
     maxAgentToolSteps: number,
+    visualOverlayEnabled: boolean,
     onStatus?: (status: AgentExecutionStatus) => void
 ): Promise<AgentRunResult> {
     const tracker = createExecutionMetricsTracker()
@@ -124,8 +125,10 @@ export async function runGeminiAgentCommand(
         onStatus?.(describeAction(parsedToolCall))
 
         try {
-            const executionResult =
-                await executeBrowserAgentAction(parsedToolCall)
+            const executionResult = await executeBrowserAgentAction({
+                ...parsedToolCall,
+                visualOverlayEnabled
+            })
 
             tracker.recordToolResult(executionResult)
 

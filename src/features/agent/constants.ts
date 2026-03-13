@@ -17,6 +17,9 @@ export const BROWSER_MODAL_THINKING_STORAGE_KEY =
 export const MAX_AGENT_TOOL_STEPS_STORAGE_KEY = 'max_agent_tool_steps'
 export const BROWSER_MAX_AGENT_TOOL_STEPS_STORAGE_KEY =
     'speedai.max_agent_tool_steps'
+export const VISUAL_OVERLAY_STORAGE_KEY = 'visual_overlay_enabled'
+export const BROWSER_VISUAL_OVERLAY_STORAGE_KEY =
+    'speedai.visual_overlay_enabled'
 
 export const DEFAULT_LLM_PROVIDER: LLMProvider = 'gemini'
 
@@ -24,6 +27,7 @@ export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3-flash-preview'
 export const DEFAULT_MODAL_MODEL_ID = 'zai-org/GLM-5-FP8'
 export const DEFAULT_MODAL_THINKING_ENABLED = true
 export const DEFAULT_MAX_AGENT_TOOL_STEPS = 10
+export const DEFAULT_VISUAL_OVERLAY_ENABLED = false
 export const MIN_AGENT_TOOL_STEPS = 5
 export const MAX_AGENT_TOOL_STEPS_LIMIT = 50
 export const MODAL_BASE_URL = 'https://api.us-west-2.modal.direct/v1'
@@ -126,6 +130,26 @@ export function normalizeModalThinkingEnabled(
     }
 
     return DEFAULT_MODAL_THINKING_ENABLED
+}
+
+export function normalizeVisualOverlayEnabled(
+    visualOverlayEnabled: boolean | string | null | undefined
+) {
+    if (typeof visualOverlayEnabled === 'boolean') {
+        return visualOverlayEnabled
+    }
+
+    if (typeof visualOverlayEnabled === 'string') {
+        if (visualOverlayEnabled === 'true') {
+            return true
+        }
+
+        if (visualOverlayEnabled === 'false') {
+            return false
+        }
+    }
+
+    return DEFAULT_VISUAL_OVERLAY_ENABLED
 }
 
 export function normalizeMaxAgentToolSteps(
